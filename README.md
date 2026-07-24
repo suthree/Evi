@@ -2,18 +2,17 @@
 
 Local Runtime is a local-first, single-machine runtime for a self-growing
 agent. It turns a local task or IM message into bounded context, validated
-actions, evidence, verification, and a response. vNext is the active delivery
-direction. The installed v0.2 runtime is frozen as an executable rollback path
-until a separately verified vNext cutover; it is not a parallel roadmap.
+actions, evidence, verification, and a response.
 
-The accepted vNext architecture keeps one persistent local-first Evi self while
-replacing the Goal-centric runtime foundation: ordinary work becomes a Turn in
-a Run, Pi owns the only Agent Loop, SQLite owns structured runtime state, and an
-Evi Action Gateway owns effects. This target does not expand the implemented
-v0.1/v0.2 contract or claim a deployment cutover. Current source behavior and
-delivery status are owned by source, tests, bounded Issues/PRs, and deployment
-evidence; the architecture and runtime-contract documents below define the
-stable owner model and acceptance semantics.
+v0.3 is the current documentation and planning baseline: Evi is a minimal
+local control plane for task/Run boundaries, tool authorization, context,
+evidence, experience, Skill/Adaptation lifecycle, and final acceptance. Pi is
+an execution surface; a future Pi subagent is a bounded delegated surface, not
+an owner of state, effects, evidence, or completion. Evi uses existing tools
+and adapters through Tool Contracts and Tool Operation Protocols instead of
+rebuilding specialist products. This is not a runtime cutover claim: source,
+tests, and verified runtime evidence remain authoritative for implemented
+behavior.
 
 ## Start here
 
@@ -30,6 +29,8 @@ stable owner model and acceptance semantics.
   [docs/AGENTS.cn.md](docs/AGENTS.cn.md)
 - Stable identity and learning stance: [core/soul.md](core/soul.md) and
   [core/soul.cn.md](core/soul.cn.md)
+- Current v0.3 operational baseline: [ADR 0018](docs/adr/0018-v0-3-tool-first-pi-learning-baseline.md)
+  and [Chinese companion](docs/adr/0018-v0-3-tool-first-pi-learning-baseline.cn.md)
 - Runtime contract and local operations (read the routed section on demand):
   [docs/RUNTIME_CONTRACT.md](docs/RUNTIME_CONTRACT.md) and
   [docs/LOCAL_RUNTIME.md](docs/LOCAL_RUNTIME.md)
@@ -79,32 +80,27 @@ state use capability-oriented names such as `local-runtime`, `project_design`,
 `model`, and `im-channel`. Names of this repository or external reference
 projects must not become implementation contracts.
 
-## Runtime evolution direction
+## Current direction and historical route
 
-The current v0.2 deployment is still owned by `GoalRuntime`, its Harness,
-canonical evidence, and `OutcomeReceipt`; [ADR 0001](docs/adr/0001-native-evolution-control-plane.md)
-records that implemented boundary. The accepted replacement is
-[ADR 0012](docs/adr/0012-vnext-runtime-kernel.md): ordinary Turns do not require
-a Goal, Pi owns the only Agent Loop, and SQLite is the structured state
-authority. [ADR 0013](docs/adr/0013-reservation-first-action-gateway.md) defines
-the reservation-first Action Gateway; the currently composed effect set is
-reported only by the implemented Runtime Contract.
-[ADR 0014](docs/adr/0014-reconciled-run-continuation.md) defines explicit
-continuation after terminal Action reconciliation. [ADR 0015](docs/adr/0015-run-execution-lease-and-dispatch-recovery.md)
-defines Run Execution ownership and model-dispatch crash recovery.
-[ADR 0016](docs/adr/0016-pi-tool-protocol-recovery.md) closes persisted Pi
-tool-call protocol recovery and marks the Kernel-foundation exit gate.
-[ADR 0017](docs/adr/0017-evi-owned-orchestration-and-adaptation.md) owns the
-final Evi/Pi division, parent-child orchestration, Delivery Lineage, and
-specialized completion model.
-v0.2 remains the rollback runtime until a separately verified cutover.
+[ADR 0018](docs/adr/0018-v0-3-tool-first-pi-learning-baseline.md) is the
+current architecture and planning route. The immediate evidence sequence is
+verified Pi tool execution, then experience-to-Skill evaluation, then a
+controlled Pi subagent if warranted; it does not authorize broad orchestration.
+Tool or delegated results remain inputs to Evi verification rather than
+completion facts.
+
+v0.2 and vNext ADRs and documents remain dated historical implementation and
+rollback evidence. They are not default context, current runtime claims, or the
+next roadmap; retrieve them by explicit identifier when their evidence is
+needed.
 
 | Need | Source |
 | --- | --- |
-| Implemented behavior | source, tests, and `docs/RUNTIME_CONTRACT.md` |
-| Accepted durable direction | `docs/adr/` and stable project docs |
-| Current v0.2 execution and verified terminal result | `GoalRuntime`, Harness, evidence, `OutcomeReceipt` |
-| Accepted vNext owner model | Turn / Run, Pi Agent Loop, SQLite, Action Gateway, optional Goal, Adaptation |
+| Implemented runtime contract | `docs/RUNTIME_CONTRACT.md` and source/tests evidence |
+| Accepted durable direction | ADR 0018 and stable project docs |
+| Current planning baseline | ADR 0018: tool-first Pi execution, experience, Skill lifecycle, Evi acceptance |
+| Implemented behavior | source, tests, and verified runtime evidence |
+| Historical implementation / rollback evidence | v0.2, vNext, ADRs 0001--0017, and frozen `.trellis/` |
 | Reflection before material evolution | `grill-me` -> bounded `Direction Proposal` |
 | Historical task/spec/decision evidence | frozen [.trellis/](.trellis/) archive |
 

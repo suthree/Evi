@@ -9,21 +9,22 @@ Evi 是一个本地优先、单机运行、持续成长的 Agent Runtime。长�
 持久 Evi Self，通过 CLI、Web、IM、浏览器、IDE、Connector 等不同入口进入现场，
 根据 Context 选择合适的工具、专业 Agent 或执行环境，并由 Evi 自己验收结果和学习经验。
 
-Evi 不追求重新实现每个专业工具。已接受的 vNext 中，普通工作是 Run 内的 Turn，Pi
-拥有唯一 Agent Loop，SQLite 拥有结构化 Runtime State，Evi Action Gateway 拥有 effect，
-Goal 只在确有长期意图时使用。编码、浏览、搜索、沙箱进程和专业 SaaS 优先通过有界
-Adapter 委托给成熟工具。当前 owner 与替换顺序见
-[`ARCHITECTURE.cn.md`](ARCHITECTURE.cn.md)。
-ADR 0013 负责 reservation-first Action Gateway；当前实际组合的 effect 集合只以
-[`RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) 的实现契约为准。
+Evi 不追求重新实现每个专业工具。v0.3 是当前 documentation 与 planning baseline：Evi 是
+最小本地控制面，拥有 task/Run 边界、tool authorization、context、evidence、experience、
+Skill/Adaptation 生命周期和最终 acceptance；Pi 是 execution surface，未来 Pi subagent 也仅是
+有界 delegated surface。Tool 或 subagent 的自报不是完成事实。编码、浏览、搜索、沙箱进程和
+专业 SaaS 优先通过有界 Adapter 委托给成熟工具。当前 source、tests、verified runtime evidence
+决定实际已实现行为，本文档不把已接受方向写成已部署事实。
 
 当前源码行为与交付状态以 source、tests、有边界的 Issue/PR 和 deployment evidence 为准；
 下列架构与运行契约文档只负责稳定的 owner model、替换顺序和验收语义，不复制易失的切片进度。
 
 ## 当前方向与已实现边界
 
-vNext 是唯一活跃交付方向。现有 v0.2 resident runtime 在独立完成 vNext 切换验收前，
-只作为可执行 rollback 保留，不再承担平行 roadmap 或新能力迭代。
+ADR 0018/v0.3 是唯一默认 architecture 与 planning route：先取得 verified Pi tool-execution
+evidence，再评估 experience-to-Skill candidate，最后才考虑受控 Pi subagent。它不授权 broad
+orchestration，也不声称 Pi subagent、fully autonomous Skill promotion 或全部 ingress 已实现。
+v0.2 与 vNext 保留为带日期的 historical implementation/rollback evidence，而不是平行路线。
 
 v0.1 是 local-first、single-machine runtime：
 
@@ -33,14 +34,15 @@ v0.1 是 local-first、single-machine runtime：
 - 本地 Memory、SOP、Skill 与 active vault；
 - commit-bound 的本地服务部署、健康检查和 rollback。
 
-vNext 继续保持执行、原始 Memory 和 Runtime State 归节点本地。它不是托管多用户服务、
-公开 marketplace、共享 Runtime State 系统，也不是无约束自治重写系统。v0.2 的 LuBan
-多节点设计只保留为历史设计与 rollback 背景，不是当前演化目标。
+v0.3 继续保持执行、原始 Memory 和 Runtime State 归节点本地。它不是托管多用户服务、
+公开 marketplace、共享 Runtime State 系统，也不是无约束自治重写系统；也不重造浏览器、
+发布器、搜索引擎或 workflow platform。v0.2 的 LuBan 多节点设计只保留为历史设计与
+rollback 背景，不是当前演化目标。
 
 长期产品愿景不等于已实现功能。当前行为以源码、测试、
 [`RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) 和 live health 为准。
 
-## 当前 rollback 与 vNext 闭环
+## 当前 v0.3 与 historical route
 
 ```text
 任务 / IM 消息
@@ -56,18 +58,11 @@ vNext 继续保持执行、原始 Memory 和 Runtime State 归节点本地。它
 渠道只是入口，Codex 等专业 Agent 只是执行 Adapter。它们都不会成为第二个 Evi Self、
 Goal owner 或完成判定 owner。
 
-已接受但尚未完成部署切换的 vNext 闭环为：
-
-```text
-请求 -> Turn / Run -> Pi Agent Loop -> Action Gateway -> 专门化 Outcome / Receipt
-                    \-> SQLite canonical state
-可选 Goal 只关联长期 objective、acceptance、budget 与多个 Run
-```
-
-具体已经实现的命令、Worker 边界和恢复语义只在
-[`RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) 与 [`LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md)
-维护；本入口不复制易失的切片进度。现有 v0.2 resident runtime 在完成独立切换验收前
-只保留为 rollback。
+v0.3 的薄控制面用 Tool Contract/Tool Operation Protocol 连接已有 tool/adapter，而不是重造
+专业产品。Skill 保存可验证的 tool-use procedure；experience 保存真实 outcome、cost、failure 与
+provenance，并驱动 candidate 的评估、激活、修订或退役。具体已实现的命令、Worker 边界和恢复
+语义只在 [`RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) 与
+[`LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md) 维护；historical v0.2/vNext 记录按需读取。
 
 ## 从这里开始
 
@@ -79,11 +74,11 @@ Goal owner 或完成判定 owner。
 | 安装、配置、服务、日志、健康、恢复 | [`LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md) |
 | Memory、SOP、Skill、Dream、晋升与退役 | [`LOCAL_LEARNING.md`](LOCAL_LEARNING.md) |
 | 长期 one-Self 产品方向 | [`PRODUCT_VISION.cn.md`](PRODUCT_VISION.cn.md) |
-| v0.2 LuBan 多节点资产边界 | [`V0.2_MULTI_NODE_EVOLUTION.cn.md`](V0.2_MULTI_NODE_EVOLUTION.cn.md) |
+| Historical v0.2 LuBan 多节点 archive / rollback evidence | [`V0.2_MULTI_NODE_EVOLUTION.cn.md`](V0.2_MULTI_NODE_EVOLUTION.cn.md) |
 | 文档按需路由 | [`INDEX.cn.md`](INDEX.cn.md) |
 | 仓库工作纪律 | [`AGENTS.cn.md`](AGENTS.cn.md) |
 | 稳定身份 | [`../core/soul.cn.md`](../core/soul.cn.md) |
-| 活跃工程方向和已接受决策 | 当前 v0.2 见 [`adr/0001-native-evolution-control-plane.cn.md`](adr/0001-native-evolution-control-plane.cn.md)；vNext Kernel 见 [`adr/0012-vnext-runtime-kernel.cn.md`](adr/0012-vnext-runtime-kernel.cn.md)，Action Gateway 见 [`adr/0013-reservation-first-action-gateway.cn.md`](adr/0013-reservation-first-action-gateway.cn.md)，Run continuation 见 [`adr/0014-reconciled-run-continuation.cn.md`](adr/0014-reconciled-run-continuation.cn.md)，Execution lease 与 dispatch recovery 见 [`adr/0015-run-execution-lease-and-dispatch-recovery.cn.md`](adr/0015-run-execution-lease-and-dispatch-recovery.cn.md)，Pi tool protocol recovery 与 Kernel 基建退出见 [`adr/0016-pi-tool-protocol-recovery.cn.md`](adr/0016-pi-tool-protocol-recovery.cn.md)，最终 Evi/Pi 分工、Parent-Child 编排与专门化完成语义见 [`adr/0017-evi-owned-orchestration-and-adaptation.cn.md`](adr/0017-evi-owned-orchestration-and-adaptation.cn.md) |
+| 当前工程方向和已接受决策 | [`adr/0018-v0-3-tool-first-pi-learning-baseline.cn.md`](adr/0018-v0-3-tool-first-pi-learning-baseline.cn.md)；v0.2/vNext 记录只经 historical route 按需读取 |
 
 长文档、原始日志、episode、历史 Task 和 Archive 是按需证据库，不是默认 Prompt
 内容。先从 `INDEX.md` 或 `INDEX.cn.md` 路由，再用 `rg` 搜标题或标识符。

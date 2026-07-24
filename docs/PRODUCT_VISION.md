@@ -14,6 +14,11 @@ The Simplified Chinese companion is
 
 ## Authority and Precedence
 
+ADR 0018 is the current v0.3 architecture and planning baseline. This vision
+does not assert a runtime cutover: source, tests, and verified runtime evidence
+decide implemented facts. v0.2/vNext material below is retained only where it
+records dated implementation, research, or rollback evidence.
+
 When this vision differs from current implementation, use this order:
 
 1. Current code, [`docs/ARCHITECTURE.md`](ARCHITECTURE.md),
@@ -457,7 +462,12 @@ The UI follows runtime contracts. A new read model may be exposed as soon as
 its owner and evidence are stable, but the UI must not invent write semantics
 that the CLI/API, Runtime Kernel, and Action Gateway do not have.
 
-## Gated Evolution Policy
+## Historical vNext Gated Evolution Policy
+
+The following former vNext sequence is preserved for historical and rollback
+context. It is not the current default or next-stage commitment; ADR 0018
+requires verified Pi tool execution, then experience-to-Skill evaluation, then
+a controlled Pi subagent if warranted.
 
 ADR 0012 closed the first five Kernel-foundation source slices on
 `origin/develop`. The resident v0.2 runtime remains the deployed rollback
@@ -530,22 +540,19 @@ success measures by themselves.
 - automatic global activation of LuBan assets;
 - treating planning text as proof that a capability exists.
 
-## Accepted Direction Summary
+## Current v0.3 Direction Summary
 
-Evi grows as one persistent local-first self with many physical doors and
-multiple execution environments. Four Evi-owned deep modules define the target:
-Runtime Kernel, Action Gateway, Orchestration Engine, and Adaptation Engine.
-Pi `AgentHarness`, behind one Evi-owned adapter, is the only Agent Loop and
-remains replaceable without moving Goal, effect, result, or adaptation
-ownership. A Goal is optional; a Supervisor Run coordinates typed Worker
-Sessions; one source-mutating Delivery Lineage has one writer; specialized
-receipts preserve distinct completion facts.
+Evi grows as one persistent local-first self and a thin control plane. It owns
+task/Run boundaries, tool authorization, context selection, evidence,
+experience, the Skill/Adaptation lifecycle, and final acceptance. Pi provides
+execution leverage; a future Pi subagent is a bounded delegated surface, never
+another Evi or an owner of action authority, state, evidence, or acceptance.
 
-Central, IM, CLI, API, connector, and host-tool surfaces bind context to the
-same Self. Local, remote, hosted-agent, and specialist-SaaS workers may execute
-a Run without becoming another Evi or accepting the parent. Memory preserves
-facts, Skills and SOPs preserve procedures, capability views guide selection,
-the Self Registry records active versions, and LuBan preserves accepted
-reusable assets in Git. The immediate next slice is the isolated read-only
-ingress canary; it does not authorize orchestration, learning, migration, or
-deployment cutover.
+Existing tools, adapters, and specialist services keep their specialist work.
+Evi supplies Tool Contracts and Tool Operation Protocols rather than rebuilding
+a browser, publisher, search engine, or workflow platform. Experience records
+retain observed outcome, cost, failure, and provenance; they may produce SOP or
+Skill candidates, but no result self-report proves completion or automatically
+activates learning. The next evidence sequence is verified Pi tool execution,
+experience-to-Skill evaluation, then a controlled Pi subagent if warranted;
+broad orchestration remains outside that sequence.

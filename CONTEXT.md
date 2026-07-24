@@ -32,6 +32,16 @@ _Avoid_: Self-Growing Agent Core, hard policy, durable memory
 
 ## Work and execution
 
+**V0.3 Operational Baseline**:
+The current architecture and planning route: Evi is a thin local control plane
+that uses verified tool execution and experience before expanding delegation.
+_Avoid_: Runtime-cutover claim, version-number proof, replacement product plan
+
+**Pi Execution Surface**:
+A bounded Pi-backed execution environment. A future Pi subagent is the same
+kind of delegated surface, never an Evi state or acceptance owner.
+_Avoid_: Separate Evi self, acceptance authority, self-report as proof
+
 **Turn**:
 One bounded response-and-action cycle started by a submitted request or continuation. A Turn does not require a Goal.
 _Avoid_: Goal, entire session, model call
@@ -122,6 +132,11 @@ _Avoid_: Vendor specification, Tool Operation Protocol, permission grant
 The bounded procedure for using a known tool: allowed scope, preconditions, evidence, verification, fallback, and retirement condition.
 _Avoid_: Tool Contract, raw documentation, credential bundle, skill
 
+**Tool-First Capability**:
+The preference to use an existing tool or adapter through a bounded contract
+and operation protocol before creating an Evi-owned workflow surface.
+_Avoid_: Rebuilding specialist products, tool visibility as capability proof
+
 **Action Gateway**:
 The mandatory Evi-owned boundary that exposes typed action contracts, applies the current authority and policy, commits a reservation before dispatch, and records bounded evidence for reconciliation. Containment strength depends on the selected handler and effect class; it is not implied by tool visibility.
 _Avoid_: Tool catalog, agent loop, prompt-only safety
@@ -171,6 +186,11 @@ _Avoid_: Keyword routing, tool call alone, completion claim
 **Capability Experience**:
 One evidence-linked observation of attempting a capability inside a Run and its relation to the observed outcome.
 _Avoid_: Causal proof, raw tool output, mastery
+
+**Experience Record**:
+A provenance-linked record of an observed tool or delegated outcome, including
+cost and failure where known, used as evidence for later procedure candidates.
+_Avoid_: Success claim, automatic learning, acceptance authority
 
 **Capability Competence**:
 Revisable decision knowledge derived from repeated **Capability Experience**, including observed scope, reliability, failure modes, freshness, and fallback.
@@ -267,6 +287,11 @@ _Avoid_: Clean status alone, state wipe, blanket deletion
 **Historical Archive**:
 Dated recoverable evidence excluded from default context and retrieved only with origin and historical status preserved.
 _Avoid_: Resident prompt, active instruction source, undocumented deletion
+
+**Historical v0.2 Archive**:
+The dated v0.2 design, task, ADR, and runtime evidence retained for explicit
+historical retrieval and rollback, but excluded from the default v0.3 route.
+_Avoid_: Current owner, default roadmap, erased evidence
 
 **Exploration Budget**:
 The finite allowance for autonomous discovery or experimentation, expressed in time, turns, calls, cost, effects, or candidate count.

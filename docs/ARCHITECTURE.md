@@ -1,8 +1,9 @@
 # Evi Architecture
 
-Status: current v0.2 module ownership plus the accepted vNext replacement
-target, updated on 2026-07-22 after ADRs 0012 through 0017. Source, tests, and live evidence
-decide current implementation; the vNext section is not a deployment claim.
+Status: v0.3 architecture/planning baseline plus dated v0.2/vNext implementation
+and rollback records. ADR 0018 is the current route; source, tests, and verified
+runtime evidence decide implementation facts. The retained vNext sections are
+not a deployment claim or current default plan.
 
 The Simplified Chinese companion is
 [`docs/ARCHITECTURE.cn.md`](ARCHITECTURE.cn.md).
@@ -25,11 +26,8 @@ may replace shallow paths. It does not own:
   `docs/LOCAL_LEARNING.md`;
 - long-term product direction: `docs/PRODUCT_VISION.md`;
 - durable architecture and evolution decisions: stable docs and accepted ADRs;
-  ADR 0001 records the current v0.2 owner model; ADRs 0012 through 0016 own the
-  vNext kernel, Action Gateway, Run continuation, execution recovery, and
-  tool-protocol closure target; ADR 0017 owns the final Evi/Pi division,
-  parent-child orchestration, Delivery Lineage, and specialized completion
-  model;
+  ADR 0018 owns the current v0.3 baseline. ADR 0001 and ADRs 0012 through 0017
+  are historical v0.2/vNext implementation, design, and rollback records;
 - current deployment truth: Git, installed artifacts, and live health.
 
 When this document differs from source or live evidence about implemented
@@ -65,7 +63,7 @@ or owner, update this document and its Chinese companion in the same delivery.
    tool competence. Promotion requires reusable scope, verified outcomes,
    failure/fallback knowledge, and revision or retirement evidence.
 
-## Accepted vNext Runtime Shape
+## Historical vNext Runtime Shape
 
 ADR 0012 replaces the v0.2 owner model after a verified cutover. The target is:
 
@@ -211,7 +209,7 @@ receipts only when those events occur. A Goal terminal outcome references the
 required evidence; it does not duplicate or reinterpret it as a second workflow
 engine.
 
-## Current v0.2 Runtime Shape
+## Historical v0.2 Runtime Shape
 
 ```text
 CLI / Web / IM
@@ -339,7 +337,7 @@ context injection, or new authority. A read never grants write, effect,
 capability, Skill, or completion authority; private paths, cross-root access,
 external effects, and writes remain hard boundaries.
 
-In current v0.2, repository placement follows the same dynamic boundary. Every source-mutating
+In the historical v0.2 implementation record, repository placement follows the same dynamic boundary. Every source-mutating
 Goal has one immutable, linked execution worktree for its full delivery
 lineage; later sessions and tools reuse it. A Goal may derive that worktree by
 `workspace.prepare` or bind an already-linked worktree, but never creates one
@@ -381,7 +379,7 @@ exact-commit history record plus bounded local Git parents and ancestry. It
 creates no evidence ledger, does not choose itself through task routing, and
 cannot deploy, restart, fetch remote claims, or accept the Goal.
 
-The current v0.2 ownership split is:
+The historical v0.2 ownership split was:
 
 | Decision concern | Owner |
 | --- | --- |
@@ -452,7 +450,11 @@ from terminal Goal outcomes without a new state owner. Remaining size is still
 architecture pressure; this change is a replacement checkpoint, not a claim
 that context or harness decomposition is finished.
 
-## vNext Delivery Order
+## Historical vNext Delivery Record
+
+This record preserves the former sequence as evidence only. ADR 0018 now sets
+the default order: verified Pi tool execution, experience-to-Skill evaluation,
+then a controlled Pi subagent if warranted; do not infer broad orchestration.
 
 ADRs 0012 through 0017 define the accepted owner model and replacement order.
 Current implementation, integration, and deployment status belongs to source,
@@ -485,7 +487,7 @@ Only one feature-growth slice is active unless Decision Owners, state owners,
 effect domains, and Delivery Lineages are demonstrably independent. Passing one
 stage does not automatically start the next.
 
-## Current v0.2 Replacement Record
+## Historical v0.2 Replacement Record
 
 Each stage requires one bounded active Goal, a named Decision Owner, explicit
 acceptance evidence, and verification or recovery criteria. More than one Goal
@@ -520,7 +522,7 @@ No stage may hide feature expansion inside refactoring. Net deletion is useful
 evidence but not mandatory; reduced interface knowledge and removed duplicate
 ownership are the completion criteria.
 
-## Current v0.2 Feature Activation Record
+## Historical v0.2 Feature Activation Record
 
 The 2026-07-18 stabilization pause was satisfied for the single bounded Issue
 #93 child after the operator explicitly resumed Issue #56. Every later feature

@@ -24,6 +24,8 @@
   从紧凑索引路由，先搜索标题或标识符，再按任务只读取
   `docs/ARCHITECTURE.md`、`docs/ENGINEERING.md`、`docs/RUNTIME_CONTRACT.md`、
   `docs/LOCAL_RUNTIME.md` 或 `docs/LOCAL_LEARNING.md` 的相关章节。
+- 当前 architecture 与 planning 先读取 ADR 0018。v0.2 与 vNext 文档除非任务明确路由，否则是带日期的
+  implementation、rollback 或 historical evidence；已实现事实仍由 source、tests 与 verified runtime evidence 决定。
 - 本地 operator 快速阅读优先看 `docs/INDEX.cn.md`、`docs/README.cn.md`、
   `docs/ARCHITECTURE.cn.md`、`docs/ENGINEERING.cn.md` 和本文件。
 - 长文档、原始日志、episode 和 archive 是按需证据库，不是常驻 prompt context。
@@ -82,6 +84,9 @@
 - 已接受的本地自成长使命构成持续授权。本地 agent 可以主动修改仓库源码、测试、文档、
   本地 runtime state、active vault、SOP、skill、脚本和本地依赖，只要改动有证据且
   能够验证。
+- 遵循 v0.3 tool-first baseline：先通过既有 tool/adapter 的 contract 执行并记录 verified experience，再评估
+  Skill candidate，之后才考虑 broad orchestration 或受控 Pi subagent。Pi execution 与 subagent 不拥有 Evi state、
+  action authority、evidence 或最终 acceptance。
 - 边界由 Decision Owner 根据上下文动态裁决，不是静态权限列表。条件发生实质变化时，
   重新评估当前 owner、证据、风险、可逆性和 operator 当前意图。
 - 开放本地权限不等于取消 harness：仍需保存证据、检查 diff、运行有针对性的验证，
