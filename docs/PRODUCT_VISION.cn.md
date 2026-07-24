@@ -18,8 +18,9 @@ source、tests 与 verified runtime evidence 决定 implemented fact。下文 v0
    [`docs/RUNTIME_CONTRACT.md`](RUNTIME_CONTRACT.md) 和
    [`docs/LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md) 描述当前模块归属与已经实现的行为；
    当前事实最终仍以代码和 live evidence 为准。
-2. [`docs/V0.2_MULTI_NODE_EVOLUTION.cn.md`](V0.2_MULTI_NODE_EVOLUTION.cn.md) 和
-   已接受 ADR 描述已经接受的当前交付目标。
+2. ADR 0018 与稳定的当前文档描述已接受的当前方向。只有明确标记为 v0.2/vNext 的
+   文档和 ADR 才是历史或回滚证据：只能通过显式标识检索，且绝不能将它们作为默认的
+   当前目标。
 3. 本文描述更长期的产品与运行时北极星。
 4. 有边界 Delivery Slice、其 Decision Owner，以及 Runtime Kernel 的 execution/effect
    contract 才能激活真实实施。GitHub 可承载可选的外部协作或交付 evidence。

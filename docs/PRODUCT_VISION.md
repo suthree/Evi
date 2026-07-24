@@ -26,8 +26,10 @@ When this vision differs from current implementation, use this order:
    [`docs/LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md) describe current placement and
    implemented behavior. Code and live evidence remain the final current-fact
    authority.
-2. [`docs/V0.2_MULTI_NODE_EVOLUTION.md`](V0.2_MULTI_NODE_EVOLUTION.md) and
-   accepted ADRs describe the accepted current delivery target.
+2. ADR 0018 and stable current documents describe the accepted current
+   direction. Only v0.2/vNext documents and ADRs explicitly marked as such are
+   historical or rollback evidence: retrieve them by explicit identifier, and
+   never treat them as the default current target.
 3. This document describes the long-term product and runtime north star.
 4. A bounded delivery slice, its Decision Owner, and the Runtime Kernel's
    execution and effect contracts activate actual work. GitHub may carry
