@@ -9,6 +9,9 @@ import {
 } from "./worker_group_types.js";
 
 export const RUNTIME_SCHEMA_VERSION = "12";
+export const DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_META_KEY =
+  "diagnostic_canary_experience_schema_version";
+export const DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_VERSION = "1";
 const MIGRATABLE_SCHEMA_VERSIONS = new Set(["8", "9", "10", "11", RUNTIME_SCHEMA_VERSION]);
 
 export class RuntimeSchemaIncompatibleError extends Error {
@@ -17,6 +20,15 @@ export class RuntimeSchemaIncompatibleError extends Error {
   constructor(readonly actualVersion: string) {
     super(`Unsupported vNext runtime schema version: ${actualVersion}`);
     this.name = "RuntimeSchemaIncompatibleError";
+  }
+}
+
+export class DiagnosticCanaryExperienceSchemaIncompatibleError extends Error {
+  readonly code = "schema_incompatible";
+
+  constructor(readonly reason: string) {
+    super(`Diagnostic canary Experience schema is incompatible: ${reason}`);
+    this.name = "DiagnosticCanaryExperienceSchemaIncompatibleError";
   }
 }
 
@@ -308,6 +320,140 @@ export function initializeRuntimeSchema(db: DatabaseSync): void {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+/**
+ * Canary-only, append-only projection schema. This is deliberately separate
+ * from the shared runtime schema so stable vNext stores never acquire or read
+ * this experimental evidence surface.
+ */
+export function initializeDiagnosticCanaryExperienceSchema(db: DatabaseSync): void {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const version = db.prepare(
+      "SELECT value FROM schema_meta WHERE key = ?"
+    ).get(DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_META_KEY) as { value: string } | undefined;
+    if (version && version.value !== DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_VERSION) {
+      throw new DiagnosticCanaryExperienceSchemaIncompatibleError(`unsupported version ${version.value}`);
+    }
+    if (!version && diagnosticCanaryExperienceObjectsExist(db)) {
+      throw new DiagnosticCanaryExperienceSchemaIncompatibleError("unversioned canary projection objects");
+    }
+    if (!version) {
+      db.exec(`
+        CREATE TABLE canary_experience_records (
+          id TEXT PRIMARY KEY,
+          receipt_id TEXT NOT NULL UNIQUE REFERENCES effect_receipts(id) ON DELETE CASCADE,
+          reservation_id TEXT NOT NULL UNIQUE REFERENCES action_reservations(id) ON DELETE CASCADE,
+          run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+          turn_id TEXT NOT NULL REFERENCES turns(id) ON DELETE CASCADE,
+          action_name TEXT NOT NULL,
+          contract_version TEXT NOT NULL,
+          action_digest TEXT NOT NULL,
+          effect_class TEXT NOT NULL CHECK (effect_class = 'local_read'),
+          reconciled INTEGER NOT NULL CHECK (reconciled IN (0, 1)),
+          observed_at TEXT NOT NULL,
+          projected_at TEXT NOT NULL,
+          cost TEXT NOT NULL CHECK (cost = 'unavailable')
+        );
+        CREATE INDEX canary_experience_records_run_idx
+          ON canary_experience_records(run_id, observed_at, id);
+      `);
+      db.prepare("INSERT INTO schema_meta (key, value) VALUES (?, ?)").run(
+        DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_META_KEY,
+        DIAGNOSTIC_CANARY_EXPERIENCE_SCHEMA_VERSION
+      );
+    }
+    assertDiagnosticCanaryExperienceSchema(db);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function diagnosticCanaryExperienceObjectsExist(db: DatabaseSync): boolean {
+  const row = db.prepare(`
+    SELECT 1 AS present
+    FROM sqlite_master
+    WHERE name IN ('canary_experience_records', 'canary_experience_records_run_idx')
+    LIMIT 1
+  `).get() as { present: number } | undefined;
+  return row !== undefined;
+}
+
+function assertDiagnosticCanaryExperienceSchema(db: DatabaseSync): void {
+  const table = db.prepare(`
+    SELECT sql
+    FROM sqlite_master
+    WHERE type = 'table' AND name = 'canary_experience_records'
+  `).get() as { sql: string } | undefined;
+  if (!table?.sql) {
+    throw new DiagnosticCanaryExperienceSchemaIncompatibleError("canary_experience_records table is missing");
+  }
+  const columns = db.prepare("PRAGMA table_info(canary_experience_records)").all() as Array<{
+    name: string;
+    type: string;
+  }>;
+  const expectedColumns = [
+    ["id", "TEXT"], ["receipt_id", "TEXT"], ["reservation_id", "TEXT"],
+    ["run_id", "TEXT"], ["turn_id", "TEXT"], ["action_name", "TEXT"],
+    ["contract_version", "TEXT"], ["action_digest", "TEXT"], ["effect_class", "TEXT"],
+    ["reconciled", "INTEGER"], ["observed_at", "TEXT"], ["projected_at", "TEXT"],
+    ["cost", "TEXT"]
+  ];
+  if (columns.length !== expectedColumns.length || columns.some((column, index) =>
+    column.name !== expectedColumns[index]![0] || column.type !== expectedColumns[index]![1]
+  )) {
+    throw new DiagnosticCanaryExperienceSchemaIncompatibleError("canary_experience_records columns are invalid");
+  }
+  const definition = table.sql.replaceAll(/\s+/g, " ").toLowerCase();
+  for (const fragment of [
+    "id text primary key",
+    "receipt_id text not null unique references effect_receipts(id) on delete cascade",
+    "reservation_id text not null unique references action_reservations(id) on delete cascade",
+    "run_id text not null references runs(id) on delete cascade",
+    "turn_id text not null references turns(id) on delete cascade",
+    "action_name text not null",
+    "contract_version text not null",
+    "action_digest text not null",
+    "effect_class text not null check (effect_class = 'local_read')",
+    "reconciled integer not null check (reconciled in (0, 1))",
+    "observed_at text not null",
+    "projected_at text not null",
+    "cost text not null check (cost = 'unavailable')"
+  ]) {
+    if (!definition.includes(fragment)) {
+      throw new DiagnosticCanaryExperienceSchemaIncompatibleError("canary_experience_records constraints are invalid");
+    }
+  }
+  if (!hasSingleColumnUniqueIndex(db, "receipt_id") || !hasSingleColumnUniqueIndex(db, "reservation_id")) {
+    throw new DiagnosticCanaryExperienceSchemaIncompatibleError("canary receipt lineage uniqueness is invalid");
+  }
+  const index = db.prepare(`
+    SELECT 1 AS present
+    FROM sqlite_master
+    WHERE type = 'index' AND name = 'canary_experience_records_run_idx'
+  `).get() as { present: number } | undefined;
+  const indexColumns = db.prepare("PRAGMA index_info(canary_experience_records_run_idx)").all() as Array<{
+    name: string;
+  }>;
+  if (!index || indexColumns.map((column) => column.name).join(",") !== "run_id,observed_at,id") {
+    throw new DiagnosticCanaryExperienceSchemaIncompatibleError("canary inspection index is invalid");
+  }
+}
+
+function hasSingleColumnUniqueIndex(db: DatabaseSync, columnName: string): boolean {
+  const indexes = db.prepare("PRAGMA index_list(canary_experience_records)").all() as Array<{
+    name: string;
+    unique: number;
+  }>;
+  return indexes.some((index) => index.unique === 1 && (db.prepare(`PRAGMA index_info(${quoteIdentifier(index.name)})`)
+    .all() as Array<{ name: string }>).map((column) => column.name).join(",") === columnName);
+}
+
+function quoteIdentifier(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
 }
 
 function assertWorkerLifecycleShape(

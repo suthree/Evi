@@ -192,6 +192,10 @@ A provenance-linked record of an observed tool or delegated outcome, including
 cost and failure where known, used as evidence for later procedure candidates.
 _Avoid_: Success claim, automatic learning, acceptance authority
 
+**Canary Experience Record**:
+A bounded, append-only projection of terminal protocol evidence from an isolated canary Run. It preserves lineage and explicitly unavailable cost for later inspection, without carrying prompts, messages, output bodies, acceptance, competence, Skill, or business-correctness claims.
+_Avoid_: Experience Record, Skill, capability maturity, acceptance evidence
+
 **Capability Competence**:
 Revisable decision knowledge derived from repeated **Capability Experience**, including observed scope, reliability, failure modes, freshness, and fallback.
 _Avoid_: One successful run, self-reported mastery, authorization
