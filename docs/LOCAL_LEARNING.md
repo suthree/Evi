@@ -1,10 +1,18 @@
 # Local Learning
 
-Local learning is the active first-version self-growth layer that turns local
-evidence into reusable local procedures. It works alongside core/basic
-self-iteration rather than waiting for per-change operator approval.
+Local learning records verified experience and evaluates reusable local
+procedures. Under ADR 0018's v0.3 baseline, a Skill is a verifiable tool-use
+procedure and promotion is not claimed solely from a package, model report, or
+one success; source and runtime evidence determine what is implemented.
 
-## Boundary
+## Historical implementation boundary and v0.3 direction
+
+The first-version mechanisms described below are implementation records. They
+include evidence-gated autonomous local-vault promotion when
+`runtime.promotion_enabled` is true, but do not make that path the v0.3 default
+or assert automatic v0.3 Skill acceptance. Under the current baseline,
+experience can create a candidate only; evaluation and activation evidence
+remain required before a Skill is current.
 
 The first version supports learning on one machine:
 
@@ -35,7 +43,7 @@ audited, promoted, installed, activated, or treated as a reusable procedure.
 Those effects require a separately governed Capability Candidate with evidence
 of business linkage, bounded probing, verification, risk, and retirement.
 
-## Approved v0.2 Extension
+## Historical v0.2 Extension
 
 v0.2 does not turn the local active vault into a shared vault. It adds a
 separate promotion boundary:

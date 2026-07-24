@@ -1,7 +1,8 @@
 # Evi 架构
 
-状态：当前 v0.2 模块归属与已接受的 vNext 替换目标；2026-07-22 在 ADR 0012 至 0017 后更新。
-当前实现以源码、测试和 live evidence 为准；vNext 章节不是部署完成声明。
+状态：v0.3 architecture/planning baseline，加上带日期的 v0.2/vNext implementation 与 rollback
+record。ADR 0018 是当前路由；已实现事实以 source、tests 与 verified runtime evidence 为准。
+保留的 vNext 章节不是 deployment claim，也不是当前默认计划。
 
 英文对应文档为 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)。
 
@@ -18,10 +19,8 @@ Evi 是一个持久、本地优先、持续成长的 Self。它的差异不在�
 - 命令、服务运维和恢复：`docs/LOCAL_RUNTIME.md`；
 - SOP、Skill、active vault、晋升和退役：`docs/LOCAL_LEARNING.md`；
 - 长期产品方向：`docs/PRODUCT_VISION.md`；
-- 持久架构和演化决策：稳定文档与已接受 ADR；ADR 0001 记录当前 v0.2 owner model，
-  ADR 0012 至 0016 负责 vNext Kernel、Action Gateway、Run continuation、execution recovery
-  与 tool protocol closure 目标；ADR 0017 负责最终 Evi/Pi 分工、Parent-Child 编排、
-  Delivery Lineage 和专门化完成语义；
+- 持久架构和演化决策：稳定文档与已接受 ADR；ADR 0018 负责当前 v0.3 baseline。ADR 0001 与
+  ADR 0012 至 0017 是 historical v0.2/vNext implementation、design 与 rollback record；
 - 当前部署事实：Git、安装产物和 live health。
 
 若本文与源码或运行证据对“已经实现什么”的描述冲突，以源码和运行证据为准。后续任务
@@ -48,7 +47,7 @@ Evi 是一个持久、本地优先、持续成长的 Self。它的差异不在�
 8. **学习由 outcome 驱动。** 包格式合法或成功一次，不等于 Tool Competence。晋升必须
    具备可复用范围、已验证 outcome、失败/回退认知，以及修订或退役证据。
 
-## 已接受的 vNext 运行形态
+## Historical vNext 运行形态
 
 ADR 0012 在经过验证的切换后取代 v0.2 owner model。目标如下：
 
@@ -173,7 +172,7 @@ integration 和 retirement 的 Delivery Lineage。一个 Goal 可以链接多条
 Activation、Deployment 只有真实发生时才产生对应 Receipt。Goal terminal outcome 引用所需
 证据，不复制或重新解释它们，也不成为第二套 workflow engine。
 
-## 当前 v0.2 运行形态
+## Historical v0.2 运行形态
 
 ```text
 CLI / Web / IM
@@ -277,7 +276,7 @@ Capability Profile，不注入默认 Context，也不新增 authority。读取�
 capability、Skill 或 completion authority；private path、跨 root 访问、external effect 与 write
 仍是硬边界。
 
-当前 v0.2 的仓库落点也遵循同一动态边界。每个修改 source 的 Goal 在完整交付链中拥有一个不可变的
+historical v0.2 implementation record 的仓库落点也遵循同一动态边界。每个修改 source 的 Goal 在完整交付链中拥有一个不可变的
 linked execution worktree；后续 session 与工具复用它。Goal 可以通过 `workspace.prepare`
 派生该 worktree，或绑定一个已存在的 linked worktree，但绝不为每个 session 新建一个。
 受保护 `develop` 上干净的根 checkout 只承担 control 与 PR integration。repo-scoped 工具和
@@ -306,7 +305,7 @@ runtime 与 channel liveness owner 现场派生一份有类型的快照。历史
 校验的精确 commit 记录，以及有界的本地 Git 父提交与祖先关系。它不新建 evidence
 ledger，不通过任务路由选择自己，也不能部署、重启、抓取远端声明或验收 Goal。
 
-当前 v0.2 的所有权拆分是：
+historical v0.2 的所有权拆分是：
 
 | 决策关注点 | Owner |
 | --- | --- |
@@ -368,7 +367,10 @@ helper 和对应的实现形状测试。`context.ts` 现为 3,022 行，
 terminal Goal outcome 得到有界 Projection，而没有新增 state owner。剩余体量仍是
 架构压力；这是替换 checkpoint，不代表 Context/Harness 已完成拆分。
 
-## vNext 交付顺序
+## Historical vNext 交付记录
+
+本记录仅保留先前顺序作为 evidence。ADR 0018 的默认顺序是 verified Pi tool execution、
+experience-to-Skill evaluation，最后才是受控 Pi subagent；不得由此推断 broad orchestration。
 
 ADR 0012 至 0017 定义已接受的 owner model 与替换顺序。当前 implementation、integration
 与 deployment 状态归 source、tests、有边界的 Issue/PR 和 commit-bound deployment evidence；
@@ -393,7 +395,7 @@ ADR 0012 至 0017 定义已接受的 owner model 与替换顺序。当前 implem
 除非 Decision Owner、state owner、effect domain 与 Delivery Lineage 可证明相互独立，否则
 同一时间只激活一条 feature-growth slice；通过一阶段不自动启动下一阶段。
 
-## 当前 v0.2 替换记录
+## Historical v0.2 替换记录
 
 每个阶段必须有一个有边界的活跃 Goal、具名的 Decision Owner、明确的接受 evidence，以及
 verification 或 recovery 标准。只有 effect boundary 和 owner 不冲突时，才可以并存多个 Goal。
@@ -419,7 +421,7 @@ Outcome-learning 收敛完成了第 4、5 阶段的第一小段：Canonical Goal
 任何阶段都不能把功能扩张藏在重构中。净删除是有用证据但不是硬指标；验收看 Interface
 知识是否减少、重复所有权是否消失。
 
-## 当前 v0.2 功能激活记录
+## Historical v0.2 功能激活记录
 
 2026-07-18 的稳定化暂停已在 operator 明确恢复 Issue #56 后，为唯一有界 child #93
 满足。v0.2 lineage 的后续每个 feature child 都必须重新满足同一 Gate；vNext source slice

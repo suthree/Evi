@@ -12,7 +12,8 @@ This file is the compact resident index for the agent. It should stay small enou
 - Runtime/reference boundary: `core/runtimes.md`
 - Shared vocabulary: `CONTEXT.md`
 - Accepted long-term product and gated evolution vision: `docs/PRODUCT_VISION.md`
-- Approved v0.2 multi-node asset direction: `docs/V0.2_MULTI_NODE_EVOLUTION.md`
+- Current v0.3 tool-first Pi and learning baseline: `docs/adr/0018-v0-3-tool-first-pi-learning-baseline.md`
+- Historical v0.2 multi-node rollback evidence: `docs/V0.2_MULTI_NODE_EVOLUTION.md`
 
 ## Seed Durable Facts
 
@@ -20,7 +21,7 @@ This file is the compact resident index for the agent. It should stay small enou
 - `AGENTS.md`, `CLAUDE.md`, `.hermes.md`, and similar files are host instruction adapters, not agent core identity.
 - Codex, Hermes, OpenClaw, GenericAgent, pi, and Claude Code are agent architecture references or delegated agent surfaces depending on context.
 - IM, CLI, MCP, shell, browser, GitHub APIs, local scripts, and skill invocation are tool or protocol interfaces.
-- The default growth loop is evidence -> SOP -> autonomous audit -> skill promotion -> reuse telemetry -> revision or retirement.
+- The v0.3 default growth route is verified tool experience -> SOP/Skill candidate -> evaluation -> activation -> reuse telemetry -> revision or retirement; fully autonomous promotion is not asserted by this index.
 - Human review is not required in the default promotion loop, but explicit operator stop/pause signals must be honored.
 
 ## Resident Recall Rule

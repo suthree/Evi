@@ -14,6 +14,11 @@ The Simplified Chinese companion is
 
 ## Authority and Precedence
 
+ADR 0018 is the current v0.3 architecture and planning baseline. This vision
+does not assert a runtime cutover: source, tests, and verified runtime evidence
+decide implemented facts. v0.2/vNext material below is retained only where it
+records dated implementation, research, or rollback evidence.
+
 When this vision differs from current implementation, use this order:
 
 1. Current code, [`docs/ARCHITECTURE.md`](ARCHITECTURE.md),
@@ -21,8 +26,10 @@ When this vision differs from current implementation, use this order:
    [`docs/LOCAL_RUNTIME.md`](LOCAL_RUNTIME.md) describe current placement and
    implemented behavior. Code and live evidence remain the final current-fact
    authority.
-2. [`docs/V0.2_MULTI_NODE_EVOLUTION.md`](V0.2_MULTI_NODE_EVOLUTION.md) and
-   accepted ADRs describe the accepted current delivery target.
+2. ADR 0018 and stable current documents describe the accepted current
+   direction. Only v0.2/vNext documents and ADRs explicitly marked as such are
+   historical or rollback evidence: retrieve them by explicit identifier, and
+   never treat them as the default current target.
 3. This document describes the long-term product and runtime north star.
 4. A bounded delivery slice, its Decision Owner, and the Runtime Kernel's
    execution and effect contracts activate actual work. GitHub may carry
@@ -457,7 +464,14 @@ The UI follows runtime contracts. A new read model may be exposed as soon as
 its owner and evidence are stable, but the UI must not invent write semantics
 that the CLI/API, Runtime Kernel, and Action Gateway do not have.
 
-## Gated Evolution Policy
+## Historical vNext Gated Evolution Policy
+
+The following former vNext sequence is preserved for historical and rollback
+context. Its bounded Pi worker and evidence-gated local-promotion slices have
+first-version source implementations, but that does not make this sequence the
+current default or next-stage commitment. ADR 0018 requires verified Pi tool
+execution, then experience-to-Skill evaluation, then a controlled Pi subagent
+if warranted for new baseline integration.
 
 ADR 0012 closed the first five Kernel-foundation source slices on
 `origin/develop`. The resident v0.2 runtime remains the deployed rollback
@@ -530,22 +544,23 @@ success measures by themselves.
 - automatic global activation of LuBan assets;
 - treating planning text as proof that a capability exists.
 
-## Accepted Direction Summary
+## Current v0.3 Direction Summary
 
-Evi grows as one persistent local-first self with many physical doors and
-multiple execution environments. Four Evi-owned deep modules define the target:
-Runtime Kernel, Action Gateway, Orchestration Engine, and Adaptation Engine.
-Pi `AgentHarness`, behind one Evi-owned adapter, is the only Agent Loop and
-remains replaceable without moving Goal, effect, result, or adaptation
-ownership. A Goal is optional; a Supervisor Run coordinates typed Worker
-Sessions; one source-mutating Delivery Lineage has one writer; specialized
-receipts preserve distinct completion facts.
+Evi grows as one persistent local-first self and a thin control plane. It owns
+task/Run boundaries, tool authorization, context selection, evidence,
+experience, the Skill/Adaptation lifecycle, and final acceptance. Pi provides
+execution leverage; existing first-version vNext Pi discussion/review workers,
+and any new Pi subagent considered by the v0.3 sequence, are bounded delegated
+surfaces, never another Evi or an owner of action authority, state, evidence,
+or acceptance.
 
-Central, IM, CLI, API, connector, and host-tool surfaces bind context to the
-same Self. Local, remote, hosted-agent, and specialist-SaaS workers may execute
-a Run without becoming another Evi or accepting the parent. Memory preserves
-facts, Skills and SOPs preserve procedures, capability views guide selection,
-the Self Registry records active versions, and LuBan preserves accepted
-reusable assets in Git. The immediate next slice is the isolated read-only
-ingress canary; it does not authorize orchestration, learning, migration, or
-deployment cutover.
+Existing tools, adapters, and specialist services keep their specialist work.
+Evi supplies Tool Contracts and Tool Operation Protocols rather than rebuilding
+a browser, publisher, search engine, or workflow platform. Experience records
+retain observed outcome, cost, failure, and provenance; they may produce SOP or
+Skill candidates, but no result self-report proves completion. The separate
+first-version promotion path remains evidence-gated and does not establish
+automatic v0.3 activation. For new baseline integration, the next evidence
+sequence is verified Pi tool execution, experience-to-Skill evaluation, then a
+controlled Pi subagent if warranted; broad orchestration remains outside that
+sequence.

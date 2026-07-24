@@ -3,6 +3,8 @@
 > 调研日期：2026-07-19。本文优先使用各项目的官方仓库、官方文档和本地
 > `Common/github_evi` 快照；不把项目自报 benchmark 当作跨项目性能结论。
 > 本文是设计研究，不改变 Evi 的运行时行为或任何外部配置。
+> ADR 0018/v0.3 是当前 baseline；本文的 GA/L0--L4 和 experience-to-SOP 内容只作
+> historical research reference，不是 Evi state、runtime 或 implementation standard。
 
 ## 结论先行
 
@@ -62,7 +64,7 @@ JSONL 作为证据源、把 SQLite FTS 作为可重建索引，并限制 raw art
 
 | 系统 | 实际设计 | 可以吸收 | 不应照搬到 Evi |
 | --- | --- | --- | --- |
-| **GenericAgent (GA)** | L1（<=30 行索引）-> L2 全局事实 -> L3 SOP/脚本 -> L4 历史会话归档；模型按 SOP 更新文件。 | 极小 resident index、事实与 procedure 分层、经验沉淀为 SOP。 | 模型直接 patch 记忆；L4 压缩/删除原始会话；缺少可执行 scope、version、证据与撤回契约。 |
+| **GenericAgent (GA, reference only)** | L1（<=30 行索引）-> L2 全局事实 -> L3 SOP/脚本 -> L4 历史会话归档；模型按 SOP 更新文件。 | 极小 resident index、事实与 procedure 分层、经验沉淀为 SOP。 | 它不是 Evi 的 state/runtime standard；也不照搬模型直接 patch 记忆、L4 压缩/删除原始会话或缺少可执行 scope、version、证据与撤回契约的部分。 |
 | **OpenClaw** | `MEMORY.md` 是精选长期层，daily notes 是工作层；Markdown 为事实源，SQLite/FTS/可选向量为可重建索引；预压缩 flush 与可选 Dreaming promotion。 | source/index 分离；长期层小而可审阅；recall 结果标为 untrusted context；Dreaming 的分阶段 gate。 | 用 memory 保存政策但不执行政策这一点必须保留；不要把 active-memory 的阻塞子 agent 变成 Evi 所有 task 的隐式延迟。 |
 | **Hermes** | `MemoryProvider` 约定 initialize、prefetch、sync_turn、session end、pre-compress 等 lifecycle，并限制同时一个外部 provider。 | `MemoryRecallPort` / provider lifecycle；单 provider 防止 tool/schema 膨胀；prefetch 不能阻塞主 loop。 | provider 不得拥有 Evi 的 Goal、receipt、semantic acceptance 或 effect decision。 |
 | **pi** | 每个 cwd 的 JSONL session tree；会话 fork/branch，结构化 compaction 和 branch summary 追踪文件读写。 | session/branch summary 应明确 Goal、约束、决策、下一步与读改文件；摘要是可丢弃 read model。 | 它不是跨 session durable memory；不应和 Evi GoalRuntime / checkpoint 形成第二套任务真相。 |

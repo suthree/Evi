@@ -4,11 +4,13 @@ The implemented first version is a local single-machine runtime. It is not a
 hosted service or a multi-user bot. It may run a single-user local service
 process for channel adapters and IM intake.
 
-vNext is the active delivery direction. The installed v0.2 resident runtime is
-frozen as an executable rollback until a separately verified cutover; its
-historical multi-node design in `docs/V0.2_MULTI_NODE_EVOLUTION.md` is not a
-parallel roadmap. Current commands below distinguish implemented vNext
-foreground surfaces from the retained rollback service contract.
+ADR 0018 is the current v0.3 architecture and planning baseline. This document
+describes implemented commands and operational facts only. The source includes
+first-version vNext Pi discussion/review workers and evidence-gated local Skill
+promotion behind `runtime.promotion_enabled`; neither fact claims a v0.3
+cutover, default route, complete ingress, or automatic v0.3 acceptance. v0.2
+and vNext are retained historical implementation and rollback evidence, not a
+parallel roadmap or default route.
 
 ## Owner Process
 

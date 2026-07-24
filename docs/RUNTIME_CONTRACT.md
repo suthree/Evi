@@ -9,12 +9,14 @@ multi-machine skill sharing, public marketplaces, hosted GUI surfaces, hosted
 daemons, and production deployment. It includes a single-user local service
 runtime for resident channel intake and a localhost operator web console.
 
-The historical v0.2 multi-node design is recorded separately in
-`docs/V0.2_MULTI_NODE_EVOLUTION.md`. It is not an active roadmap. vNext is the
-active delivery direction; the installed v0.2 resident runtime remains only as
-an executable rollback until a separately verified cutover. This document
-remains the authority for implemented runtime behavior, and the historical
-v0.2 design must not be used to claim that a multi-node capability exists.
+ADR 0018 is the current v0.3 architecture and planning baseline. This document
+remains the authority for implemented runtime behavior only. Source includes
+bounded first-version vNext Pi discussion/review workers and evidence-gated
+local Skill promotion behind `runtime.promotion_enabled`; those facts do not
+claim a v0.3 cutover, default route, complete v0.3 ingress, or automatic v0.3
+Skill acceptance. The v0.2 multi-node design and vNext records are dated
+historical implementation and rollback evidence, not an active roadmap or a
+claim that a multi-node capability exists.
 
 ## Scope
 
