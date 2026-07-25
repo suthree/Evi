@@ -302,9 +302,10 @@ _Avoid_: Clean status alone, state wipe, blanket deletion
 Dated recoverable evidence excluded from default context and retrieved only with origin and historical status preserved.
 _Avoid_: Resident prompt, active instruction source, undocumented deletion
 
-**Historical v0.2 Archive**:
-The dated v0.2 design, task, ADR, and runtime evidence retained for explicit
-historical retrieval and rollback, but excluded from the default v0.3 route.
+**Historical Record**:
+A dated, named design, task, decision, or runtime record retrieved only when
+its specific evidence is needed. It is not default context or a current design
+owner.
 _Avoid_: Current owner, default roadmap, erased evidence
 
 **Exploration Budget**:

@@ -32,7 +32,7 @@ cost, risk, failure modes, fallback guidance, and freshness. It helps choose how
 to use a capability in a later task; it is neither a permission grant, a causal
 claim about Goal completion, a semantic-memory fact, nor a procedural skill.
 
-**Shared Knowledge Pack (v0.2 target)**:
+**Shared Knowledge Pack**:
 A deliberately promoted, scoped, redacted semantic summary stored as a
 versioned LuBan asset. It is imported as bounded read-only context. It is not a
 copy of raw episodes, a MemoryStore database merge, or a replacement for

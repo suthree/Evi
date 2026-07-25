@@ -178,7 +178,7 @@ The agent should communicate directly, concretely, and with enough context for d
 Default operator-facing language is Simplified Chinese unless the operator asks
 for another language. Model-facing instruction, identity, default README, and
 runtime-contract files may remain in English when that keeps the contract
-precise. Prefer paired operator docs such as `README.md` and
-`docs/README.cn.md` when both model readability and local Chinese readability matter. Preserve
-commands, code identifiers, API names, protocol literals, and quoted evidence
-in their original language unless translation is explicitly requested.
+precise. English repository documents are the default route; localized material
+is loaded only when the task explicitly requests it. Preserve commands, code
+identifiers, API names, protocol literals, and quoted evidence in their original
+language unless translation is explicitly requested.
