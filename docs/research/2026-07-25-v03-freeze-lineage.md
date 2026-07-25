@@ -11,66 +11,62 @@ runtime mutation.
 
 - Freeze task: [Issue #160](https://github.com/suthree/Evi/issues/160)
 - Freeze branch: `codex/issue-160-v03-freeze`
-- Base: `origin/main` at `3723264` (`release: v0.3.0 (#156)`)
+- Base: `origin/develop` at `7061136`
 - Direction record carried by this branch:
   `docs/research/2026-07-25-v03-intent-resolution-and-growth-rehearsal.md`
 
-The branch is a durable entrypoint for the paused discussion and for the exact
-remote refs that preserve every local working lineage. It intentionally does
-not manufacture a combined implementation from independent branches: doing so
-would silently choose conflict resolutions and could falsely imply an accepted
-integration.
+The branch is a durable entrypoint for the paused discussion. It intentionally
+does not manufacture a combined implementation from independent branches:
+doing so would silently choose conflict resolutions and could falsely imply an
+accepted integration.
+
+## Branch lifecycle rule
+
+`main` and `develop` are the only long-lived repository branches. Every other
+remote development branch must be owned by one real GitHub Issue and use the
+form `codex/issue-<issue-number>-<slug>`. It targets `develop`; after a verified
+merge into `develop`, its remote ref is deleted. A closed or merged PR alone is
+not deletion evidence when the current branch tip is not reachable from
+`develop`.
 
 ## Preservation invariant
 
-Before local branch cleanup, every non-default local work branch below has an
-exactly matching `origin/<branch>` ref. The former local `main` was an ancestor
-of the newer `origin/main`, with no local-only commit; the freeze branch uses
-that newer remote head. `develop` was already equal to `origin/develop`.
+The old local working refs were first pushed and independently verified. The
+freeze cleanup then preserves every unmerged lineage under either this Issue or
+one retrospective Issue branch below. The former local `main` had no
+local-only commit and was advanced to the newer `origin/main`; local `develop`
+was already equal to `origin/develop`.
 
-This record does not replace Git refs. Its purpose is to make the cleanup
-auditable after local feature refs are removed.
+This record does not replace Git refs. It makes the remote cleanup auditable
+after historical, merged, and nonconforming names are removed.
 
-## Remote working-lineage snapshot
+## Retained remote Issue branches
 
-- `codex/environment-baseline-governance` at `c9dc243`
-- `codex/evi-vnext-action-gateway` at `275badc`
-- `codex/evi-vnext-dispatch-recovery` at `f0157e9`
-- `codex/evi-vnext-run-continuation` at `ec95095`
-- `codex/goal-20260721-baseline-failures` at `eba358d`
-- `codex/issue-152-vnext-worker-groups` at `4d8c24c`
-- `codex/issue-20260720-central-state-journal` at `c498db6`
-- `codex/issue-20260720-confirmed-effect-recovery` at `c9dc243`
-- `codex/issue-20260720-durable-effect-journal` at `c9dc243`
-- `codex/issue-20260720-environment-baseline` at `664e406`
-- `codex/issue-20260720-resume-intent-live` at `0aea22a`
-- `codex/specialist-executor-intent` at `0aea22a`
-- `codex/v03-active-context-route` at `d81ffd7`
-- `codex/v03-canary-experience-record` at `c1e55c7`
-- `codex/v03-canary-experience-review` at `0b831f6`
-- `codex/v03-canary-experience-review-2` at `c1e55c7`
-- `codex/v03-doc-baseline` at `4ad1a6c`
-- `codex/v03-doc-baseline-review` at `9a783de`
-- `codex/v03-english-default-route` at `f16b983`
-- `codex/v03-growth-lifecycle` at `ca1a61c`
-- `codex/v03-growth-rehearsal-direction-proposal` at `6def0ce`
-- `codex/v03-legacy-config-pi-adapter` at `f738024`
-- `codex/v03-product-vision-precedence` at `9a783de`
-- `f1/init` at `9dfdbcd`
-- `f1/transactional-runtime-deploy` at `f9bdf94`
+| Issue | Canonical branch | Preserved head | Prior ref | Status |
+| --- | --- | --- | --- | --- |
+| [#160](https://github.com/suthree/Evi/issues/160) | `codex/issue-160-v03-freeze` | this branch | `codex/v03-growth-rehearsal-direction-proposal` | paused direction and freeze record |
+| [#161](https://github.com/suthree/Evi/issues/161) | `codex/issue-161-baseline-failure-recovery` | `eba358d` | `codex/goal-20260721-baseline-failures` | paused; no PR |
+| [#162](https://github.com/suthree/Evi/issues/162) | `codex/issue-162-harness-state-sop-proposal` | `02ff3fa` | `codex/goal-20260722-harness-state-sop-proposal` | paused; PR #131 needs later content audit |
+| [#163](https://github.com/suthree/Evi/issues/163) | `codex/issue-163-environment-baseline` | `664e406` | `codex/issue-20260720-environment-baseline` | paused; date token was not an Issue number |
+| [#164](https://github.com/suthree/Evi/issues/164) | `codex/issue-164-v03-english-default-route` | `f16b983` | `codex/v03-english-default-route` | paused |
+| [#165](https://github.com/suthree/Evi/issues/165) | `codex/issue-165-legacy-config-pi-adapter` | `f738024` | `codex/v03-legacy-config-pi-adapter` | paused |
+| [#166](https://github.com/suthree/Evi/issues/166) | `codex/issue-166-v03-active-context-route` | `d81ffd7` | `codex/v03-active-context-route` | paused |
+| [#167](https://github.com/suthree/Evi/issues/167) | `codex/issue-167-v03-growth-lifecycle` | `ca1a61c` | `codex/v03-growth-lifecycle` | paused; fixed mechanism only |
+| [#168](https://github.com/suthree/Evi/issues/168) | `codex/issue-168-reviewer-worker-follow-up` | `09a4dd5` | `codex/issue-150-vnext-reviewer-worker` | paused; seven commits remain after PR #151 |
 
-## Local cleanup policy
+The old `codex/v03-growth-rehearsal-direction-proposal` adds no unique source
+after the #167 head; its direction document is byte-identical here. It is
+therefore retired with the other noncanonical refs. The closed
+`codex/issue-57-observation-only-rollback-drill` has no tree difference from
+`develop` and is also retired.
 
-After this branch is pushed and the ref snapshot is independently verified:
+## Cleanup result and resumption condition
 
-1. update local `main` and `develop` to their remote-tracking heads without a
-   force push;
-2. detach non-default worktrees so deleting their branch refs cannot alter or
-   erase their files;
-3. delete local branch refs other than `main` and `develop` only;
-4. retain all worktree directories and all remote branches unless a later,
-   separate cleanup instruction authorizes their removal.
+Remote refs reachable from `develop` are removed after reachability
+verification. Noncanonical refs listed in the table are removed only after the
+replacement Issue branch is verified at the same head. Worktree directories
+remain detached and are not deleted by this cleanup.
 
-The local repository then retains only `main` and `develop` branch refs. The
-remote freeze branch and the enumerated remote work branches remain the source
-of recovery and later selective resumption.
+Development is paused. To resume, the operator selects a specific Issue branch
+and authorizes it; the implementer then establishes a new Environment Baseline
+and reconfirms source, worktree, runtime, and evidence facts.
