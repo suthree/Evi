@@ -15,6 +15,7 @@ import {
   type ResolvedVNextModel,
   type VNextRunEnvelope
 } from "../apps/cli/src/vnext_run.js";
+import { testLegacyConfigPiAdapter } from "./vnext_test_support.js";
 import {
   VNEXT_WORKER_MARKER,
   type VNextWorkerEnvelope
@@ -70,7 +71,6 @@ test("stable vNext runs one discussion Worker in a separate CLI process and wake
     base_url: `http://127.0.0.1:${address.port}/v1`,
     model: "worker-process-model",
     credential_ref: "worker-process-credential",
-    api_key: secret,
     reasoning_effort: null,
     context_window_tokens: 128_000,
     max_output_tokens: 2_400,
@@ -87,7 +87,7 @@ test("stable vNext runs one discussion Worker in a separate CLI process and wake
       config_dir: configDir,
       repo_root: fixture
     }, {
-      load_model: async () => model,
+      load_legacy_config_pi_adapter: async () => testLegacyConfigPiAdapter({ model, secret }),
       create_loop_factory: () => ({
         create(input) {
           return {
@@ -246,7 +246,6 @@ test("vnext worker execute recovers after SIGKILL with one Result and exact mode
     base_url: `http://127.0.0.1:${address.port}/v1`,
     model: "worker-sigkill-model",
     credential_ref: "worker-sigkill-credential",
-    api_key: secret,
     reasoning_effort: null,
     context_window_tokens: 128_000,
     max_output_tokens: 2_400,
@@ -264,7 +263,7 @@ test("vnext worker execute recovers after SIGKILL with one Result and exact mode
       config_dir: configDir,
       repo_root: fixture
     }, {
-      load_model: async () => model,
+      load_legacy_config_pi_adapter: async () => testLegacyConfigPiAdapter({ model, secret }),
       create_loop_factory: () => ({
         create(input) {
           return {

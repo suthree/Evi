@@ -1,5 +1,16 @@
-import type { ActionToolContract } from "../packages/kernel/src/action_types.js";
-import type { ExecutionLockInput } from "../packages/kernel/src/contracts.js";
+import {
+  ExecutionLockMismatchError,
+  type ActionToolContract,
+  type AgentLoopFactory,
+  type ExecutionLock,
+  type ExecutionLockInput,
+  type SqliteRuntimeStore
+} from "../packages/kernel/src/index.js";
+import type {
+  LegacyConfigPiAdapter,
+  PiLoopFactoryOverride,
+  ResolvedVNextModel
+} from "../apps/cli/src/vnext_legacy_config_pi_adapter.js";
 
 interface TestModelIdentity {
   id: string;
@@ -44,4 +55,47 @@ export function testExecutionLock(input: {
       effect_class: contract.effect_class
     }))
   };
+}
+
+/**
+ * Test-only adapter that models the production adapter's opaque credential
+ * closure. vNext dependency injection receives only its non-secret model view.
+ */
+export function testLegacyConfigPiAdapter(input: {
+  model: ResolvedVNextModel;
+  secret: string;
+}): LegacyConfigPiAdapter {
+  const secret = input.secret.trim();
+  return {
+    model: input.model,
+    createLoopFactory({ store, override }) {
+      const factory = requiredFactory(override);
+      return factory({ store, model: input.model });
+    },
+    assertCredentialBinding(lock) {
+      if (lock.model.config_id !== input.model.config_id
+        || lock.model.credential_ref !== input.model.credential_ref) {
+        throw new ExecutionLockMismatchError(
+          `Configured credential binding changed for immutable Execution Lock: ${lock.digest}`
+        );
+      }
+    },
+    redact(value) {
+      return secret ? value.replaceAll(secret, "[redacted]") : value;
+    },
+    redactError(error) {
+      if (!(error instanceof Error)) return secret ? String(error).replaceAll(secret, "[redacted]") : String(error);
+      const message = secret ? error.message.replaceAll(secret, "[redacted]") : error.message;
+      if (message === error.message) return error;
+      Object.defineProperty(error, "message", { configurable: true, value: message });
+      return error;
+    }
+  };
+}
+
+function requiredFactory(override: PiLoopFactoryOverride | undefined): PiLoopFactoryOverride {
+  if (override) return override;
+  return (_input: { store: SqliteRuntimeStore; model: ResolvedVNextModel }): AgentLoopFactory => ({
+    create: () => ({ execute: async () => ({ answer: "test adapter requires an explicit loop factory" }) })
+  });
 }

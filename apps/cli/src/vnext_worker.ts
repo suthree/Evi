@@ -17,12 +17,10 @@ import {
 } from "../../../packages/kernel/src/index.js";
 import {
   assertContinuationSelectors,
-  assertCredentialBinding,
-  createLoopFactory,
   DEFAULT_VNEXT_STATE_ROOT,
-  loadConfiguredVNextModel,
   type VNextRunDependencies
 } from "./vnext_run.js";
+import { loadLegacyConfigPiAdapter } from "./vnext_legacy_config_pi_adapter.js";
 import { resolveIsolatedVNextSqlite } from "./vnext_state.js";
 import { VNextCodexExecutionExecutor } from "../../../packages/runtime/src/vnext_execution_worker_adapter.js";
 
@@ -41,7 +39,7 @@ export interface VNextWorkerRequest {
 
 export type VNextWorkerDependencies = Pick<
   VNextRunDependencies,
-  "path_boundary" | "load_model" | "create_loop_factory"
+  "path_boundary" | "load_legacy_config_pi_adapter" | "create_loop_factory"
 > & { execution_executor?: ExecutionWorkerExecutor };
 
 export interface VNextWorkerEnvelope {
@@ -135,31 +133,38 @@ export async function executeVNextWorker(
         return envelope(reviewWorker.status, reviewWorker.id, reviewWorker, "execute");
       }
       assertContinuationSelectors(reviewWorker.child_execution_lock, repoRoot, configDir);
-      const loadModel = dependencies.load_model ?? loadConfiguredVNextModel;
-      const model = await loadModel({
+      const loadAdapter = dependencies.load_legacy_config_pi_adapter ?? loadLegacyConfigPiAdapter;
+      const adapter = await loadAdapter({
         config_dir: configDir,
         state_root: stateRoot,
         model_id: reviewWorker.child_execution_lock.model.config_id
       });
-      assertCredentialBinding(reviewWorker.child_execution_lock, model);
+      adapter.assertCredentialBinding(reviewWorker.child_execution_lock);
       const runtimeInspect = createRuntimeInspectAction(store);
       const gateway = new ActionGateway(store, [runtimeInspect]);
-      const loops = createLoopFactory(dependencies, store, model.api_key);
-      const completed = await new ReviewWorkerRuntime(store, gateway, loops).execute(reviewWorker.id);
-      return envelope(completed.status, completed.id, completed, "execute");
+      try {
+        const loops = adapter.createLoopFactory({
+          store,
+          override: dependencies.create_loop_factory
+        });
+        const completed = await new ReviewWorkerRuntime(store, gateway, loops).execute(reviewWorker.id);
+        return envelope(completed.status, completed.id, completed, "execute");
+      } catch (error) {
+        throw adapter.redactError(error);
+      }
     }
     if (!worker) throw new Error(`Worker Session not found: ${workerId}`);
     if (worker.status === "completed" || worker.status === "failed" || worker.status === "needs_input") {
       return envelope(worker.status, worker.id, worker, "execute");
     }
     assertContinuationSelectors(worker.child_execution_lock, repoRoot, configDir);
-    const loadModel = dependencies.load_model ?? loadConfiguredVNextModel;
-    const model = await loadModel({
+    const loadAdapter = dependencies.load_legacy_config_pi_adapter ?? loadLegacyConfigPiAdapter;
+    const adapter = await loadAdapter({
       config_dir: configDir,
       state_root: stateRoot,
       model_id: worker.child_execution_lock.model.config_id
     });
-    assertCredentialBinding(worker.child_execution_lock, model);
+    adapter.assertCredentialBinding(worker.child_execution_lock);
     const runtimeInspect = createRuntimeInspectAction(store);
     const supportsNeedsInput = worker.child_execution_lock.actions.some(
       (action) => action.name === WORKER_NEEDS_INPUT_CONTRACT.name
@@ -172,9 +177,16 @@ export async function executeVNextWorker(
       runtimeInspect,
       ...(supportsNeedsInput ? [createWorkerNeedsInputAction(orchestration)] : [])
     ]);
-    const loops = createLoopFactory(dependencies, store, model.api_key);
-    const completed = await new DiscussionWorkerRuntime(store, gateway, loops).execute(worker.id);
-    return envelope(completed.status, completed.id, completed, "execute");
+    try {
+      const loops = adapter.createLoopFactory({
+        store,
+        override: dependencies.create_loop_factory
+      });
+      const completed = await new DiscussionWorkerRuntime(store, gateway, loops).execute(worker.id);
+      return envelope(completed.status, completed.id, completed, "execute");
+    } catch (error) {
+      throw adapter.redactError(error);
+    }
   } finally {
     store.close();
   }
