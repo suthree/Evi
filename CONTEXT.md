@@ -128,6 +128,16 @@ _Avoid_: Tool Contract, agent architecture, skill
 The typed declaration of one callable tool's inputs, outputs, effect class, and invariants.
 _Avoid_: Vendor specification, Tool Operation Protocol, permission grant
 
+**Harness-State Capability**:
+A named, Goal-start-opted-in Harness action that writes one tightly bounded local
+state artifact under canonical evidence checks. It is neither a **Tool
+Contract** nor a general file-write surface: its state effect, verification, and
+retirement boundary remain owned by the **Harness Kernel**. The first instance,
+`harness.propose_sop`, creates only an unaudited, inactive SOP draft from
+same-Goal nondelegated observations; a later ordinary Goal outcome may describe
+verified draft delivery but never promotion.
+_Avoid_: Tool Contract, file.write_state alias, SOP promotion, active-vault write, Skill, completion authority
+
 **Tool Operation Protocol**:
 The bounded procedure for using a known tool: allowed scope, preconditions, evidence, verification, fallback, and retirement condition.
 _Avoid_: Tool Contract, raw documentation, credential bundle, skill
