@@ -85,6 +85,7 @@ import {
   listWorkingCheckpoints
 } from "../../../packages/core/src/working_checkpoints.js";
 import { getSessionRecap } from "../../../packages/core/src/session_recap.js";
+import { getEnvironmentBaseline } from "../../../packages/core/src/environment_baseline.js";
 import { getRuntimeWorkspaceStatus } from "../../../packages/core/src/runtime_workspace.js";
 import { getWorkspaceStatus, type WorkspaceStatusResult } from "../../../packages/core/src/workspace_status.js";
 import type { SkillResolverLike } from "../../../packages/core/src/skill_resolver.js";
@@ -272,6 +273,8 @@ interface CliOptions {
   discoveryReportId?: string;
   capabilitiesAction?: "catalog" | "acceptance" | "verify-entrypoints";
   workspaceAction?: "status" | "runtime";
+  environmentAction?: "baseline";
+  testStateRoot?: string;
   notifyAction?: "queue" | "list";
   notifyOpenId?: string;
   notifyText?: string;
@@ -1619,6 +1622,21 @@ export async function main(): Promise<number> {
     const result = await getWorkspaceStatus(store, { limit: options.limit });
     console.log(JSON.stringify({ action: options.workspaceAction ?? "status", ...result }, null, 2));
     return result.status === "error" ? 1 : 0;
+  }
+
+  if (options.command === "environment") {
+    const config = await loadConfig({
+      configDir: options.configDir,
+      stateRoot: options.stateRoot,
+      skipAuth: true
+    });
+    const store = new AgentStore(resolve(options.repoRoot), config.state.root);
+    const result = await getEnvironmentBaseline(store, {
+      limit: options.limit,
+      testStateRoot: options.testStateRoot
+    });
+    console.log(JSON.stringify(result, null, 2));
+    return result.status === "blocked" ? 1 : 0;
   }
 
   if (options.command === "goal") {
@@ -3254,6 +3272,7 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (options.command === "capabilities" && isCapabilitiesAction(arg)) options.capabilitiesAction = parseCapabilitiesAction(arg);
     else if (options.command === "workspace" && (arg === "status" || arg === "health")) options.workspaceAction = "status";
     else if (options.command === "workspace" && (arg === "runtime" || arg === "runtime-status")) options.workspaceAction = "runtime";
+    else if (options.command === "environment" && arg === "baseline") options.environmentAction = "baseline";
     else if (options.command === "notify" && (arg === "queue" || arg === "list")) options.notifyAction = arg;
     else if (options.command === "memory" && isMemoryAction(arg)) options.memoryAction = arg;
     else if (options.command === "pipeline" && (arg === "runs" || arg === "resume")) options.pipelineAction = arg;
@@ -3401,6 +3420,7 @@ export function parseArgs(argv: string[]): CliOptions {
     else if (arg === "--config-dir") options.configDir = required(rest[++index], "--config-dir requires a value");
     else if (arg === "--repo-root") options.repoRoot = required(rest[++index], "--repo-root requires a value");
     else if (arg === "--state-root") options.stateRoot = required(rest[++index], "--state-root requires a value");
+    else if (arg === "--test-state-root") options.testStateRoot = required(rest[++index], "--test-state-root requires a value");
     else if (arg === "--goal") options.goalId = required(rest[++index], "--goal requires a value");
     else if (arg === "--command-id") options.goalCommandId = required(rest[++index], "--command-id requires a value");
     else if (arg === "--confirm-effect") options.goalConfirmEffectId = required(rest[++index], "--confirm-effect requires a value");
@@ -3507,6 +3527,9 @@ export function parseArgs(argv: string[]): CliOptions {
     if (vnextRunSelected) validateVNextRunOptions(options);
     if (vnextWorkerSelected) validateVNextWorkerOptions(options);
     if (vnextAdaptationSelected) validateVNextAdaptationOptions(options);
+  }
+  if (options.command === "environment" && options.environmentAction !== "baseline") {
+    throw new Error("environment requires action: baseline");
   }
   return options;
 }
@@ -4039,6 +4062,7 @@ function printUsage(): void {
   pnpm run runtime -- deployment fail --reason "..." [--deployment deployment_...] [--failure-ref memory/episodes/...] [--state-root ${stateRootUsage}]
   pnpm run runtime -- workspace status [--repo-root .] [--limit 20] [--state-root ${stateRootUsage}]
   pnpm run runtime -- workspace runtime [--repo-root .] [--state-root ${stateRootUsage}]
+  pnpm run runtime -- environment baseline [--repo-root .] [--test-state-root /absolute/isolated-test-state] [--limit 20] [--state-root ${stateRootUsage}]
   pnpm run runtime -- notify queue --open-id <feishu-open-id> --text "..." [--source codex] [--notification-ref memory/episodes/...] [--state-root ${stateRootUsage}]
   pnpm run runtime -- notify list [--status queued|sent|failed] [--limit 20] [--state-root ${stateRootUsage}]
   pnpm run runtime -- skills [--skill-name skill-name|vault/skills/name/SKILL.md] [--action list|validate|sync|health|retire-event]

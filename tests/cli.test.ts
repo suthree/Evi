@@ -63,6 +63,26 @@ test("config command parses read-only config summary options", () => {
   assert.equal(options.stateRoot, ".runtime/state");
 });
 
+test("environment baseline command parses an isolated test state root", () => {
+  const options = parseArgs([
+    "environment",
+    "baseline",
+    "--state-root",
+    ".runtime/state",
+    "--test-state-root",
+    ".runtime/smoke/baseline-test"
+  ]);
+
+  assert.equal(options.command, "environment");
+  assert.equal(options.environmentAction, "baseline");
+  assert.equal(options.stateRoot, ".runtime/state");
+  assert.equal(options.testStateRoot, ".runtime/smoke/baseline-test");
+});
+
+test("environment command requires an explicit read-only action", () => {
+  assert.throws(() => parseArgs(["environment"]), /environment requires action: baseline/);
+});
+
 test("vNext canary parsing requires an explicit opt-in surface and isolated SQLite options", () => {
   const submit = parseArgs([
     "vnext",

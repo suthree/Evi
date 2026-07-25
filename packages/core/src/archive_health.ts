@@ -90,7 +90,6 @@ export async function getArchiveHealth(
   store: AgentStore,
   args: { limit?: number; archiveRef?: string; now?: Date | string } = {}
 ): Promise<ArchiveHealthResult> {
-  await store.ensureLayout();
   const now = args.now instanceof Date ? args.now : new Date(args.now ?? Date.now());
   const checkedAt = now.toISOString();
   const openDayDate = checkedAt.slice(0, 10);

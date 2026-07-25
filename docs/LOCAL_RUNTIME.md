@@ -1531,6 +1531,22 @@ checkout: `~/.local-runtime/state/evi`,
 `~/.local-runtime/archives/<archive-id>`. It does not read file bodies, move,
 delete, mutate state, invoke the model, write the repo, or write the active
 vault.
+
+`environment baseline` is the explicit read-only gate diagnostic before a new
+self-evolution Goal mutates source:
+
+```bash
+pnpm run runtime -- environment baseline --state-root ~/.local-runtime/state/evi \
+  --test-state-root /absolute/isolated-test-state
+```
+
+It combines bounded workspace and runtime-layout checks, archive health, test
+state-root overlap detection, and resident deployment identity. A stale or
+unverifiable resident deployment, unhealthy archive, invalid workspace, or
+overlapping test root returns `blocked`; it does not restart, deploy, create or
+repair state, or remove historical evidence. The command requires the literal
+`baseline` action rather than assigning a default action.
+
 Live context includes the same bounded `Workspace Status` section so the agent
 can see checkout cleanliness before proposing repo edits. The section is
 orientation only: a clean workspace does not prove resident service deployment,
