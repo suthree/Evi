@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -15,6 +15,7 @@ test("live SOP flow promotes into user vault then reuses recalled skill", async 
   const activeVault = join(root, "agent-home/vault");
   await mkdir(join(repoRoot, "vault/skills"), { recursive: true });
   await mkdir(join(repoRoot, "skills"), { recursive: true });
+  await writeStableCoreFixture(repoRoot);
 
   const config = testConfig({ stateRoot, activeVault });
   const firstRunner = new LiveAgentRunner({
@@ -62,6 +63,7 @@ test("live SOP flow rejects a one-off acknowledgement before durable learning wr
   const activeVault = join(root, "agent-home/vault");
   await mkdir(join(repoRoot, "vault/skills"), { recursive: true });
   await mkdir(join(repoRoot, "skills"), { recursive: true });
+  await writeStableCoreFixture(repoRoot);
 
   const runner = new LiveAgentRunner({
     repoRoot,
@@ -291,4 +293,19 @@ async function readJsonl(path: string): Promise<Array<Record<string, any>>> {
 async function mkdirTemp(): Promise<string> {
   const { mkdtemp } = await import("node:fs/promises");
   return mkdtemp(join(tmpdir(), "agent-sop-flow-"));
+}
+
+async function writeStableCoreFixture(repoRoot: string): Promise<void> {
+  const docsRoot = join(repoRoot, "docs");
+  await mkdir(docsRoot, { recursive: true });
+  await writeFile(join(docsRoot, "CURRENT_DIRECTION.md"), [
+    "# Current Direction",
+    "",
+    "Deterministic local fixture for the SOP flow test."
+  ].join("\n"), "utf8");
+  await writeFile(join(docsRoot, "INDEX.md"), [
+    "# Documentation Index",
+    "",
+    "Stable Core fixture index."
+  ].join("\n"), "utf8");
 }

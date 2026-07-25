@@ -13,14 +13,28 @@ import type {
 import { materializeActionDigest } from "./action_identity.js";
 import { stableJson } from "./canonical_json.js";
 import {
+  materializeAdaptationActivationReceipt,
+  materializeProcedureObservationReceipt,
+  materializeProcedureRetirementReceipt,
+  materializeProcedureSelectionReceipt,
+  parseAdaptationActivationReceipt,
   parseEvaluationReceipt,
   parseProcedureCandidate,
+  parseProcedureObservationReceipt,
+  parseProcedureRetirementReceipt,
+  parseProcedureSelectionReceipt,
   parseSelfRegistryVersion,
+  renderProcedureGrowthContext,
   selfRegistryVersionFor,
+  PROCEDURE_RUNTIME_INSPECTION_SLOT,
+  type AdaptationActivationReceipt,
   type AdaptationInspection,
   type EvaluationBaseline,
   type EvaluationReceipt,
   type ProcedureCandidate,
+  type ProcedureObservationReceipt,
+  type ProcedureRetirementReceipt,
+  type ProcedureSelectionReceipt,
   type SelfRegistryVersion
 } from "./adaptation_types.js";
 import { assertCanonicalProcedureEvaluation } from "./adaptation_evaluation.js";
@@ -359,6 +373,74 @@ interface AdaptationEvaluationRow {
   evaluator_version: string;
   status: string;
   evaluation_digest: string;
+  receipt_json: string;
+  created_at: string;
+}
+
+interface AdaptationActivationRow {
+  id: string;
+  candidate_id: string;
+  candidate_digest: string;
+  evaluation_id: string;
+  evaluation_digest: string;
+  target_slot: string;
+  baseline_kind: string;
+  baseline_version_id: string | null;
+  baseline_digest: string | null;
+  previous_version_id: string | null;
+  previous_artifact_digest: string | null;
+  activated_version_id: string;
+  activated_artifact_digest: string;
+  activation_digest: string;
+  receipt_json: string;
+  created_at: string;
+}
+
+interface AdaptationSelectionRow {
+  id: string;
+  run_id: string;
+  initial_turn_id: string;
+  target_slot: string;
+  version_id: string;
+  artifact_digest: string;
+  candidate_id: string;
+  candidate_digest: string;
+  growth_context_digest: string;
+  selection_digest: string;
+  receipt_json: string;
+  created_at: string;
+}
+
+interface AdaptationObservationRow {
+  id: string;
+  selection_id: string;
+  run_id: string;
+  initial_turn_id: string;
+  final_turn_id: string;
+  target_slot: string;
+  version_id: string;
+  artifact_digest: string;
+  candidate_id: string;
+  candidate_digest: string;
+  effect_receipt_id: string;
+  effect_receipt_digest: string;
+  outcome: string;
+  observation_digest: string;
+  receipt_json: string;
+  created_at: string;
+}
+
+interface AdaptationRetirementRow {
+  id: string;
+  target_slot: string;
+  version_id: string;
+  artifact_digest: string;
+  candidate_id: string;
+  reason: string;
+  evaluation_id: string | null;
+  observation_id: string | null;
+  replacement_version_id: string | null;
+  retirement_digest: string;
   receipt_json: string;
   created_at: string;
 }
@@ -2410,7 +2492,19 @@ export class SqliteRuntimeStore {
       ORDER BY created_at ASC, id ASC
     `).all(candidate.id) as unknown as AdaptationEvaluationRow[])
       .map((row) => this.validateAdaptationEvaluation(toEvaluationReceipt(row)));
-    return { candidate, registry_version: registry, evaluations };
+    const activation = candidate.target_slot === PROCEDURE_RUNTIME_INSPECTION_SLOT
+      ? this.getAdaptationActivationForCandidate(candidate.id)
+      : null;
+    const retirement = candidate.target_slot === PROCEDURE_RUNTIME_INSPECTION_SLOT
+      ? this.getProcedureRetirementForVersion(registry.id)
+      : null;
+    return {
+      candidate,
+      registry_version: registry,
+      evaluations,
+      activation: activation ? this.validateAdaptationActivation(activation) : null,
+      retirement: retirement ? this.validateProcedureRetirement(retirement) : null
+    };
   }
 
   inspectAdaptationEvaluation(evaluationId: string): EvaluationReceipt | null {
@@ -2420,6 +2514,365 @@ export class SqliteRuntimeStore {
       WHERE id = ?
     `).get(evaluationId) as AdaptationEvaluationRow | undefined;
     return row ? this.validateAdaptationEvaluation(toEvaluationReceipt(row)) : null;
+  }
+
+  activateAdaptationCandidate(candidateId: string): AdaptationActivationReceipt {
+    return this.transaction(() => {
+      const candidate = this.requireAdaptationCandidate(candidateId);
+      this.requireGrowthTargetSlot(candidate.target_slot);
+      this.assertCompletedAdaptationEvidence(candidate);
+      const registry = this.requireAdaptationRegistry(candidate.id);
+      const existing = this.getAdaptationActivationForCandidate(candidate.id);
+      if (registry.state === "active") {
+        if (!existing) throw new Error(`Active Adaptation Candidate has no Activation Receipt: ${candidate.id}`);
+        return this.validateAdaptationActivation(existing);
+      }
+      if (registry.state !== "inactive") {
+        throw new Error(`Adaptation Candidate is not pending activation: ${candidate.id}`);
+      }
+      if (existing) throw new Error(`Inactive Adaptation Candidate already has an Activation Receipt: ${candidate.id}`);
+
+      const baseline = this.getAdaptationBaseline(candidate.target_slot);
+      const previous = this.getActiveAdaptationRegistry(candidate.target_slot);
+      if ((baseline.kind === "none") !== (previous === null)
+        || (previous !== null
+          && (baseline.version_id !== previous.id || baseline.digest !== previous.artifact_digest))) {
+        throw new Error(`Adaptation Activation baseline drifted: ${candidate.id}`);
+      }
+      const evaluation = this.requirePassedAdaptationEvaluation(candidate, baseline);
+      const activation = materializeAdaptationActivationReceipt({
+        candidate,
+        evaluation,
+        previous_version: previous,
+        activated_version: registry
+      });
+      if (previous !== null) {
+        const retirement = materializeProcedureRetirementReceipt({
+          version: previous,
+          reason: "superseded",
+          replacement_version_id: registry.id,
+          created_at: activation.created_at
+        });
+        this.insertAdaptationRetirement(retirement);
+        const retired = this.db.prepare(`
+          UPDATE self_registry_versions
+          SET state = 'retired', updated_at = ?
+          WHERE id = ? AND target_slot = ? AND state = 'active'
+        `).run(activation.created_at, previous.id, candidate.target_slot);
+        if (Number(retired.changes) !== 1) {
+          throw new Error(`Active Self Registry retirement raced: ${previous.id}`);
+        }
+      }
+      const activated = this.db.prepare(`
+        UPDATE self_registry_versions
+        SET state = 'active', updated_at = ?
+        WHERE id = ? AND target_slot = ? AND state = 'inactive'
+      `).run(activation.created_at, registry.id, candidate.target_slot);
+      if (Number(activated.changes) !== 1) {
+        throw new Error(`Pending Self Registry activation raced: ${registry.id}`);
+      }
+      this.insertAdaptationActivation(activation);
+      return this.requireAdaptationActivation(activation.id);
+    });
+  }
+
+  bindInitialProcedureSelection(runId: string, turnId: string): ProcedureSelectionReceipt | null {
+    return this.transaction(() => {
+      const run = this.requireRun(runId);
+      if (run.status !== "running" || run.turn_id !== turnId) {
+        throw new Error(`Procedure Selection must bind the current running Run Turn: ${runId}`);
+      }
+      const existing = this.getAdaptationSelectionForRun(run.id);
+      if (existing) return this.validateProcedureSelection(existing);
+      this.assertProcedureSelectionPreLoop(run);
+      const version = this.getActiveAdaptationRegistry(PROCEDURE_RUNTIME_INSPECTION_SLOT);
+      if (!version) return null;
+      const candidate = this.requireAdaptationCandidate(version.candidate_id);
+      this.requireGrowthTargetSlot(candidate.target_slot);
+      const selection = materializeProcedureSelectionReceipt({
+        run_id: run.id,
+        initial_turn_id: run.turn_id,
+        version,
+        candidate
+      });
+      this.db.prepare(`
+        INSERT INTO adaptation_selections (
+          id, run_id, initial_turn_id, target_slot, version_id, artifact_digest,
+          candidate_id, candidate_digest, growth_context_digest, selection_digest, receipt_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        selection.id,
+        selection.run_id,
+        selection.initial_turn_id,
+        selection.target_slot,
+        selection.version_id,
+        selection.artifact_digest,
+        selection.candidate_id,
+        selection.candidate_digest,
+        selection.growth_context_digest,
+        selection.digest,
+        JSON.stringify(selection),
+        selection.created_at
+      );
+      return this.requireProcedureSelection(selection.id);
+    });
+  }
+
+  /**
+   * Compatibility surface for direct Growth lifecycle tests.  Runtime callers
+   * should use bindInitialProcedureSelection so absence is a normal no-op.
+   */
+  selectActiveProcedure(runId: string, turnId: string): ProcedureSelectionReceipt {
+    const selection = this.bindInitialProcedureSelection(runId, turnId);
+    if (!selection) throw new Error(`No active Growth Procedure: ${PROCEDURE_RUNTIME_INSPECTION_SLOT}`);
+    return selection;
+  }
+
+  observeProcedureSelection(selectionId: string, effectReceiptId: string): ProcedureObservationReceipt {
+    return this.transaction(() => {
+      const selection = this.requireProcedureSelection(selectionId);
+      const run = this.requireRun(selection.run_id);
+      const receipt = this.requireEffectReceiptById(effectReceiptId);
+      return this.observeProcedureSelectionInTransaction(selection, run, receipt);
+    });
+  }
+
+  retireAdaptationCandidate(candidateId: string, observationId?: string): ProcedureRetirementReceipt {
+    return this.transaction(() => {
+      return this.retireAdaptationCandidateInTransaction(candidateId, observationId);
+    });
+  }
+
+  /**
+   * Terminal Run settlement is the only runtime-owned Growth projection.  It
+   * deliberately consumes exactly one canonical receipt, so a Run can never
+   * turn an ambiguous collection of successful actions into an activation or
+   * retirement signal.
+   */
+  private settleGrowthObservationInTransaction(run: RunRecord): void {
+    const selected = this.getAdaptationSelectionForRun(run.id);
+    if (!selected) return;
+    const selection = this.validateProcedureSelection(selected);
+    const canonicalReceipts = this.getCanonicalRuntimeInspectionReceipts(selection);
+    if (canonicalReceipts.length === 0) {
+      this.insertEvent(run.id, run.turn_id, "growth_observation_unverified", {
+        selection_id: selection.id,
+        selection_digest: selection.digest,
+        reason: "no_canonical_receipt"
+      });
+      return;
+    }
+    if (canonicalReceipts.length !== 1) {
+      this.insertEvent(run.id, run.turn_id, "growth_observation_unverified", {
+        selection_id: selection.id,
+        selection_digest: selection.digest,
+        reason: "ambiguous_canonical_receipts",
+        canonical_receipts: canonicalReceipts.map((receipt) => ({
+          id: receipt.id,
+          digest: effectReceiptDigest(receipt)
+        }))
+      });
+      return;
+    }
+
+    const receipt = canonicalReceipts[0]!;
+    const existing = this.getProcedureObservationForSelection(selection.id);
+    if (existing) {
+      const receiptDigest = effectReceiptDigest(receipt);
+      if (existing.effect_receipt_id === receipt.id
+        && existing.effect_receipt_digest === receiptDigest) {
+        this.validateProcedureObservation(existing);
+        return;
+      }
+      this.insertEvent(run.id, run.turn_id, "growth_observation_unverified", {
+        selection_id: selection.id,
+        selection_digest: selection.digest,
+        reason: "observation_drift",
+        observation_id: existing.id,
+        observation_digest: existing.digest,
+        observed_receipt: {
+          id: existing.effect_receipt_id,
+          digest: existing.effect_receipt_digest
+        },
+        canonical_receipt: {
+          id: receipt.id,
+          digest: receiptDigest
+        }
+      });
+      return;
+    }
+
+    const observation = this.observeProcedureSelectionInTransaction(selection, run, receipt);
+    if (observation.outcome !== "failed") return;
+
+    const registry = this.requireAdaptationRegistry(selection.candidate_id);
+    if (registry.id !== selection.version_id
+      || registry.artifact_digest !== selection.artifact_digest) {
+      throw new Error(`Procedure Selection registry drifted: ${selection.id}`);
+    }
+    // A replacement may have superseded the version while this Run was
+    // active.  The observation remains valuable evidence, but must not retire
+    // the replacement or create a second retirement for the old version.
+    if (registry.state === "active") {
+      this.retireAdaptationCandidateInTransaction(selection.candidate_id, observation.id);
+    }
+  }
+
+  private observeProcedureSelectionInTransaction(
+    selection: ProcedureSelectionReceipt,
+    run: RunRecord,
+    receipt: EffectReceipt
+  ): ProcedureObservationReceipt {
+    if (run.status !== "completed" && run.status !== "failed") {
+      throw new Error(`Procedure Observation requires a terminal Run: ${run.id}`);
+    }
+    const existing = this.getProcedureObservationForSelection(selection.id);
+    if (existing) {
+      const prior = this.validateProcedureObservation(existing);
+      if (prior.effect_receipt_id !== receipt.id
+        || prior.effect_receipt_digest !== effectReceiptDigest(receipt)) {
+        throw new Error(`Procedure Observation request drifted: ${selection.id}`);
+      }
+      return prior;
+    }
+    this.assertCanonicalRuntimeInspectionReceipt(selection, receipt);
+    const observation = materializeProcedureObservationReceipt({
+      selection,
+      final_turn_id: run.turn_id,
+      effect_receipt_id: receipt.id,
+      effect_receipt_digest: effectReceiptDigest(receipt),
+      outcome: run.status
+    });
+    this.db.prepare(`
+      INSERT INTO adaptation_observations (
+        id, selection_id, run_id, initial_turn_id, final_turn_id, target_slot,
+        version_id, artifact_digest, candidate_id, candidate_digest, outcome,
+        effect_receipt_id, effect_receipt_digest, observation_digest, receipt_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      observation.id,
+      observation.selection_id,
+      observation.run_id,
+      observation.initial_turn_id,
+      observation.final_turn_id,
+      observation.target_slot,
+      observation.version_id,
+      observation.artifact_digest,
+      observation.candidate_id,
+      observation.candidate_digest,
+      observation.outcome,
+      observation.effect_receipt_id,
+      observation.effect_receipt_digest,
+      observation.digest,
+      JSON.stringify(observation),
+      observation.created_at
+    );
+    return this.requireProcedureObservation(observation.id);
+  }
+
+  private retireAdaptationCandidateInTransaction(
+    candidateId: string,
+    observationId?: string
+  ): ProcedureRetirementReceipt {
+    const candidate = this.requireAdaptationCandidate(candidateId);
+    this.requireGrowthTargetSlot(candidate.target_slot);
+    const registry = this.requireAdaptationRegistry(candidate.id);
+    const existing = this.getProcedureRetirementForVersion(registry.id);
+    if (registry.state === "retired") {
+      if (!existing) throw new Error(`Retired Self Registry version has no Retirement Receipt: ${registry.id}`);
+      const receipt = this.validateProcedureRetirement(existing);
+      if ((observationId ?? null) !== receipt.observation_id) {
+        throw new Error(`Procedure Retirement request drifted: ${registry.id}`);
+      }
+      return receipt;
+    }
+    if (existing) throw new Error(`Active or pending Self Registry version already has a Retirement Receipt: ${registry.id}`);
+
+    let retirement: ProcedureRetirementReceipt;
+    if (registry.state === "inactive") {
+      if (observationId !== undefined) {
+        throw new Error(`Pending Adaptation Candidate retirement does not accept an Observation: ${candidate.id}`);
+      }
+      const evaluation = this.requireFailedAdaptationEvaluation(candidate);
+      retirement = materializeProcedureRetirementReceipt({
+        version: registry,
+        reason: "failed_evaluation",
+        evaluation_id: evaluation.id
+      });
+    } else if (registry.state === "active") {
+      if (!observationId) {
+        throw new Error(`Active Adaptation Candidate retirement requires a failed Observation: ${candidate.id}`);
+      }
+      const observation = this.requireProcedureObservation(observationId);
+      if (observation.outcome !== "failed"
+        || observation.version_id !== registry.id
+        || observation.artifact_digest !== registry.artifact_digest
+        || observation.candidate_id !== candidate.id
+        || observation.candidate_digest !== candidate.digest) {
+        throw new Error(`Procedure Retirement observation does not prove an active failure: ${candidate.id}`);
+      }
+      retirement = materializeProcedureRetirementReceipt({
+        version: registry,
+        reason: "observed_failure",
+        observation_id: observation.id
+      });
+    } else {
+      throw new Error(`Self Registry state is invalid: ${registry.id}`);
+    }
+    const retired = this.db.prepare(`
+      UPDATE self_registry_versions
+      SET state = 'retired', updated_at = ?
+      WHERE id = ? AND target_slot = ? AND state = ?
+    `).run(retirement.created_at, registry.id, candidate.target_slot, registry.state);
+    if (Number(retired.changes) !== 1) {
+      throw new Error(`Self Registry retirement raced: ${registry.id}`);
+    }
+    this.insertAdaptationRetirement(retirement);
+    return this.requireProcedureRetirement(retirement.id);
+  }
+
+  inspectAdaptationActivation(activationId: string): AdaptationActivationReceipt | null {
+    const row = this.db.prepare(`
+      SELECT * FROM adaptation_activations WHERE id = ?
+    `).get(activationId) as AdaptationActivationRow | undefined;
+    return row ? this.validateAdaptationActivation(toAdaptationActivationReceipt(row)) : null;
+  }
+
+  inspectProcedureSelection(selectionId: string): ProcedureSelectionReceipt | null {
+    const row = this.db.prepare(`
+      SELECT * FROM adaptation_selections WHERE id = ?
+    `).get(selectionId) as AdaptationSelectionRow | undefined;
+    return row ? this.validateProcedureSelection(toProcedureSelectionReceipt(row)) : null;
+  }
+
+  readProcedureSelectionForRun(runId: string): ProcedureSelectionReceipt | null {
+    const run = this.requireRun(runId);
+    const selection = this.getAdaptationSelectionForRun(run.id);
+    return selection ? this.validateProcedureSelection(selection) : null;
+  }
+
+  renderSelectedProcedureContext(selectionId: string): string {
+    const selection = this.requireProcedureSelection(selectionId);
+    const candidate = this.requireAdaptationCandidate(selection.candidate_id);
+    const context = renderProcedureGrowthContext(candidate);
+    if (sha256(context) !== selection.growth_context_digest) {
+      throw new Error(`Procedure Selection Growth Context drifted: ${selection.id}`);
+    }
+    return context;
+  }
+
+  inspectProcedureObservation(observationId: string): ProcedureObservationReceipt | null {
+    const row = this.db.prepare(`
+      SELECT * FROM adaptation_observations WHERE id = ?
+    `).get(observationId) as AdaptationObservationRow | undefined;
+    return row ? this.validateProcedureObservation(toProcedureObservationReceipt(row)) : null;
+  }
+
+  inspectProcedureRetirement(retirementId: string): ProcedureRetirementReceipt | null {
+    const row = this.db.prepare(`
+      SELECT * FROM adaptation_retirements WHERE id = ?
+    `).get(retirementId) as AdaptationRetirementRow | undefined;
+    return row ? this.validateProcedureRetirement(toProcedureRetirementReceipt(row)) : null;
   }
 
   getPiSession(sessionId: string): PiSessionRow | null {
@@ -2693,6 +3146,7 @@ export class SqliteRuntimeStore {
       } else if (outcome === "completed") {
         this.insertEvent(run.id, run.turn_id, "run_completed", {});
         this.projectDiagnosticCanaryExperience(run.id, settledAt);
+        this.projectTerminalGrowthObservationSafelyInTransaction(this.requireRun(run.id));
       } else if (outcome === "paused") {
         this.insertEvent(run.id, run.turn_id, "run_paused", {
           reason: error,
@@ -2701,9 +3155,29 @@ export class SqliteRuntimeStore {
         });
       } else {
         this.insertEvent(run.id, run.turn_id, "run_failed", { error });
+        this.projectTerminalGrowthObservationSafelyInTransaction(this.requireRun(run.id));
       }
       return this.requireRun(run.id);
     });
+  }
+
+  /**
+   * Growth is an evidence projection of an already terminal Run, not the
+   * owner of that terminal outcome.  A corrupted selection or receipt must
+   * leave no partial Growth state, but can never reopen or roll back the Run.
+   */
+  private projectTerminalGrowthObservationSafelyInTransaction(run: RunRecord): void {
+    this.db.exec("SAVEPOINT terminal_growth_projection");
+    try {
+      this.settleGrowthObservationInTransaction(run);
+      this.db.exec("RELEASE SAVEPOINT terminal_growth_projection");
+    } catch {
+      this.db.exec("ROLLBACK TO SAVEPOINT terminal_growth_projection");
+      this.db.exec("RELEASE SAVEPOINT terminal_growth_projection");
+      this.insertEvent(run.id, run.turn_id, "growth_observation_unverified", {
+        reason: "invalid_growth_projection"
+      });
+    }
   }
 
   private updateRunningRunAndTurn(
@@ -3771,6 +4245,14 @@ export class SqliteRuntimeStore {
     return row ? toEffectReceipt(row) : null;
   }
 
+  private requireEffectReceiptById(receiptId: string): EffectReceipt {
+    const row = this.db.prepare(`
+      SELECT * FROM effect_receipts WHERE id = ?
+    `).get(receiptId) as EffectReceiptRow | undefined;
+    if (!row) throw new Error(`Effect receipt not found: ${receiptId}`);
+    return toEffectReceipt(row);
+  }
+
   private requireEffectReceipt(reservationId: string): EffectReceipt {
     const receipt = this.getEffectReceipt(reservationId);
     if (!receipt) throw new Error(`Effect receipt not found: ${reservationId}`);
@@ -4282,6 +4764,380 @@ export class SqliteRuntimeStore {
     return receipt;
   }
 
+  private requireGrowthTargetSlot(targetSlot: string): asserts targetSlot is typeof PROCEDURE_RUNTIME_INSPECTION_SLOT {
+    if (targetSlot !== PROCEDURE_RUNTIME_INSPECTION_SLOT) {
+      throw new Error(`Growth Lifecycle only supports ${PROCEDURE_RUNTIME_INSPECTION_SLOT}.`);
+    }
+  }
+
+  private requireAdaptationRegistry(candidateId: string): SelfRegistryVersion {
+    const row = this.db.prepare(`
+      SELECT * FROM self_registry_versions WHERE candidate_id = ?
+    `).get(candidateId) as SelfRegistryVersionRow | undefined;
+    if (!row) throw new Error(`Self Registry version is missing: ${candidateId}`);
+    const registry = toSelfRegistryVersion(row);
+    const candidate = this.requireAdaptationCandidate(candidateId);
+    if (registry.target_slot !== candidate.target_slot
+      || registry.candidate_id !== candidate.id
+      || registry.artifact_digest !== candidate.digest
+      || registry.artifact_kind !== candidate.kind) {
+      throw new Error(`Self Registry version identity drifted: ${registry.id}`);
+    }
+    return registry;
+  }
+
+  private getActiveAdaptationRegistry(targetSlot: string): SelfRegistryVersion | null {
+    const row = this.db.prepare(`
+      SELECT * FROM self_registry_versions
+      WHERE target_slot = ? AND state = 'active'
+      LIMIT 1
+    `).get(targetSlot) as SelfRegistryVersionRow | undefined;
+    if (!row) return null;
+    const registry = toSelfRegistryVersion(row);
+    this.requireAdaptationRegistry(registry.candidate_id);
+    return registry;
+  }
+
+  private requirePassedAdaptationEvaluation(
+    candidate: ProcedureCandidate,
+    baseline: EvaluationBaseline
+  ): EvaluationReceipt {
+    const receipts = (this.db.prepare(`
+      SELECT * FROM adaptation_evaluations
+      WHERE candidate_id = ? AND status = 'passed'
+      ORDER BY created_at ASC, id ASC
+    `).all(candidate.id) as unknown as AdaptationEvaluationRow[])
+      .map((row) => this.validateAdaptationEvaluation(toEvaluationReceipt(row)))
+      .filter((receipt) => stableJson(receipt.baseline) === stableJson(baseline));
+    if (receipts.length !== 1) {
+      throw new Error(`Adaptation Activation requires one passed Evaluation for the current baseline: ${candidate.id}`);
+    }
+    return receipts[0]!;
+  }
+
+  private requireFailedAdaptationEvaluation(candidate: ProcedureCandidate): EvaluationReceipt {
+    const receipts = (this.db.prepare(`
+      SELECT * FROM adaptation_evaluations
+      WHERE candidate_id = ? AND status = 'failed'
+      ORDER BY created_at ASC, id ASC
+    `).all(candidate.id) as unknown as AdaptationEvaluationRow[])
+      .map((row) => this.validateAdaptationEvaluation(toEvaluationReceipt(row)));
+    if (receipts.length === 0) {
+      throw new Error(`Pending Adaptation Candidate requires a failed Evaluation before retirement: ${candidate.id}`);
+    }
+    return receipts[receipts.length - 1]!;
+  }
+
+  private getAdaptationActivationForCandidate(candidateId: string): AdaptationActivationReceipt | null {
+    const row = this.db.prepare(`
+      SELECT * FROM adaptation_activations WHERE candidate_id = ?
+    `).get(candidateId) as AdaptationActivationRow | undefined;
+    return row ? toAdaptationActivationReceipt(row) : null;
+  }
+
+  private requireAdaptationActivation(activationId: string): AdaptationActivationReceipt {
+    const receipt = this.inspectAdaptationActivation(activationId);
+    if (!receipt) throw new Error(`Adaptation Activation not found: ${activationId}`);
+    return receipt;
+  }
+
+  private getAdaptationSelectionForRun(runId: string): ProcedureSelectionReceipt | null {
+    const row = this.db.prepare(`
+      SELECT * FROM adaptation_selections
+      WHERE run_id = ? AND target_slot = ?
+    `).get(runId, PROCEDURE_RUNTIME_INSPECTION_SLOT) as AdaptationSelectionRow | undefined;
+    return row ? toProcedureSelectionReceipt(row) : null;
+  }
+
+  private getCanonicalRuntimeInspectionReceipts(selection: ProcedureSelectionReceipt): EffectReceipt[] {
+    return (this.db.prepare(`
+      SELECT receipts.*
+      FROM effect_receipts AS receipts
+      JOIN action_reservations AS reservations ON reservations.id = receipts.reservation_id
+      WHERE receipts.run_id = ?
+        AND receipts.turn_id = ?
+        AND receipts.action_name = 'runtime_inspect'
+        AND receipts.contract_version = '1'
+        AND receipts.effect_class = 'local_read'
+        AND receipts.outcome = 'succeeded'
+        AND reservations.run_id = receipts.run_id
+        AND reservations.turn_id = receipts.turn_id
+        AND reservations.state = 'terminal'
+        AND reservations.action_name = receipts.action_name
+        AND reservations.contract_version = receipts.contract_version
+        AND reservations.action_digest = receipts.action_digest
+        AND reservations.effect_class = receipts.effect_class
+      ORDER BY receipts.created_at ASC, receipts.id ASC
+    `).all(selection.run_id, selection.initial_turn_id) as unknown as EffectReceiptRow[])
+      .map(toEffectReceipt);
+  }
+
+  private assertCanonicalRuntimeInspectionReceipt(
+    selection: ProcedureSelectionReceipt,
+    receipt: EffectReceipt
+  ): void {
+    const reservation = this.requireActionReservation(receipt.reservation_id);
+    if (receipt.run_id !== selection.run_id
+      || receipt.turn_id !== selection.initial_turn_id
+      || receipt.action_name !== "runtime_inspect"
+      || receipt.contract_version !== "1"
+      || receipt.effect_class !== "local_read"
+      || receipt.outcome !== "succeeded"
+      || reservation.run_id !== selection.run_id
+      || reservation.turn_id !== selection.initial_turn_id
+      || reservation.state !== "terminal"
+      || reservation.action_name !== receipt.action_name
+      || reservation.contract_version !== receipt.contract_version
+      || reservation.action_digest !== receipt.action_digest
+      || reservation.effect_class !== receipt.effect_class) {
+      throw new Error(`Procedure Observation Effect Receipt is not canonical runtime_inspect evidence: ${selection.id}`);
+    }
+  }
+
+  private requireProcedureSelection(selectionId: string): ProcedureSelectionReceipt {
+    const receipt = this.inspectProcedureSelection(selectionId);
+    if (!receipt) throw new Error(`Procedure Selection not found: ${selectionId}`);
+    return receipt;
+  }
+
+  private getProcedureObservationForSelection(selectionId: string): ProcedureObservationReceipt | null {
+    const row = this.db.prepare(`
+      SELECT * FROM adaptation_observations WHERE selection_id = ?
+    `).get(selectionId) as AdaptationObservationRow | undefined;
+    return row ? toProcedureObservationReceipt(row) : null;
+  }
+
+  private requireProcedureObservation(observationId: string): ProcedureObservationReceipt {
+    const receipt = this.inspectProcedureObservation(observationId);
+    if (!receipt) throw new Error(`Procedure Observation not found: ${observationId}`);
+    return receipt;
+  }
+
+  private getProcedureRetirementForVersion(versionId: string): ProcedureRetirementReceipt | null {
+    const row = this.db.prepare(`
+      SELECT * FROM adaptation_retirements WHERE version_id = ?
+    `).get(versionId) as AdaptationRetirementRow | undefined;
+    return row ? toProcedureRetirementReceipt(row) : null;
+  }
+
+  private requireProcedureRetirement(retirementId: string): ProcedureRetirementReceipt {
+    const receipt = this.inspectProcedureRetirement(retirementId);
+    if (!receipt) throw new Error(`Procedure Retirement not found: ${retirementId}`);
+    return receipt;
+  }
+
+  private insertAdaptationActivation(receipt: AdaptationActivationReceipt): void {
+    this.db.prepare(`
+      INSERT INTO adaptation_activations (
+        id, candidate_id, candidate_digest, evaluation_id, evaluation_digest, target_slot,
+        baseline_kind, baseline_version_id, baseline_digest, previous_version_id,
+        previous_artifact_digest, activated_version_id, activated_artifact_digest,
+        activation_digest, receipt_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      receipt.id,
+      receipt.candidate_id,
+      receipt.candidate_digest,
+      receipt.evaluation_id,
+      receipt.evaluation_digest,
+      receipt.target_slot,
+      receipt.baseline.kind,
+      receipt.baseline.version_id,
+      receipt.baseline.digest,
+      receipt.previous_version_id,
+      receipt.previous_artifact_digest,
+      receipt.activated_version_id,
+      receipt.activated_artifact_digest,
+      receipt.digest,
+      JSON.stringify(receipt),
+      receipt.created_at
+    );
+  }
+
+  private insertAdaptationRetirement(receipt: ProcedureRetirementReceipt): void {
+    this.db.prepare(`
+      INSERT INTO adaptation_retirements (
+        id, target_slot, version_id, artifact_digest, candidate_id, reason,
+        evaluation_id, observation_id, replacement_version_id, retirement_digest,
+        receipt_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      receipt.id,
+      receipt.target_slot,
+      receipt.version_id,
+      receipt.artifact_digest,
+      receipt.candidate_id,
+      receipt.reason,
+      receipt.evaluation_id,
+      receipt.observation_id,
+      receipt.replacement_version_id,
+      receipt.digest,
+      JSON.stringify(receipt),
+      receipt.created_at
+    );
+  }
+
+  private validateAdaptationActivation(receipt: AdaptationActivationReceipt): AdaptationActivationReceipt {
+    const candidate = this.requireAdaptationCandidate(receipt.candidate_id);
+    this.requireGrowthTargetSlot(candidate.target_slot);
+    const evaluation = this.requireAdaptationEvaluation(receipt.evaluation_id);
+    const activated = this.requireAdaptationRegistry(receipt.candidate_id);
+    if (receipt.candidate_digest !== candidate.digest
+      || receipt.evaluation_digest !== evaluation.digest
+      || evaluation.status !== "passed"
+      || stableJson(receipt.baseline) !== stableJson(evaluation.baseline)
+      || receipt.target_slot !== candidate.target_slot
+      || receipt.activated_version_id !== activated.id
+      || receipt.activated_artifact_digest !== activated.artifact_digest
+      || (activated.state !== "active" && activated.state !== "retired")) {
+      throw new Error(`Adaptation Activation identity drifted: ${receipt.id}`);
+    }
+    if (receipt.previous_version_id === null) {
+      if (receipt.previous_artifact_digest !== null || receipt.baseline.kind !== "none") {
+        throw new Error(`Adaptation Activation previous baseline drifted: ${receipt.id}`);
+      }
+    } else {
+      const row = this.db.prepare(`SELECT * FROM self_registry_versions WHERE id = ?`)
+        .get(receipt.previous_version_id) as SelfRegistryVersionRow | undefined;
+      if (!row) throw new Error(`Adaptation Activation previous version is missing: ${receipt.id}`);
+      const previous = toSelfRegistryVersion(row);
+      if (previous.target_slot !== receipt.target_slot
+        || previous.artifact_digest !== receipt.previous_artifact_digest
+        || previous.state !== "retired"
+        || receipt.baseline.kind !== "self_registry_version"
+        || receipt.baseline.version_id !== previous.id
+        || receipt.baseline.digest !== previous.artifact_digest) {
+        throw new Error(`Adaptation Activation previous baseline drifted: ${receipt.id}`);
+      }
+    }
+    return receipt;
+  }
+
+  private validateProcedureSelection(receipt: ProcedureSelectionReceipt): ProcedureSelectionReceipt {
+    this.requireGrowthTargetSlot(receipt.target_slot);
+    const run = this.requireRun(receipt.run_id);
+    if (!this.turnBelongsToRun(receipt.initial_turn_id, run.id)) {
+      throw new Error(`Procedure Selection initial Turn identity drifted: ${receipt.id}`);
+    }
+    const row = this.db.prepare(`SELECT * FROM self_registry_versions WHERE id = ?`)
+      .get(receipt.version_id) as SelfRegistryVersionRow | undefined;
+    if (!row) throw new Error(`Procedure Selection version is missing: ${receipt.id}`);
+    const version = toSelfRegistryVersion(row);
+    const candidate = this.requireAdaptationCandidate(receipt.candidate_id);
+    if ((version.state !== "active" && version.state !== "retired")
+      || version.target_slot !== receipt.target_slot
+      || version.candidate_id !== candidate.id
+      || version.artifact_digest !== candidate.digest
+      || receipt.artifact_digest !== version.artifact_digest
+      || receipt.candidate_digest !== candidate.digest
+      || receipt.growth_context_digest !== sha256(renderProcedureGrowthContext(candidate))) {
+      throw new Error(`Procedure Selection identity drifted: ${receipt.id}`);
+    }
+    return receipt;
+  }
+
+  private validateProcedureObservation(receipt: ProcedureObservationReceipt): ProcedureObservationReceipt {
+    const selection = this.requireProcedureSelection(receipt.selection_id);
+    const run = this.requireRun(receipt.run_id);
+    const effect = this.requireEffectReceiptById(receipt.effect_receipt_id);
+    const reservation = this.requireActionReservation(effect.reservation_id);
+    if ((run.status !== "completed" && run.status !== "failed")
+      || receipt.outcome !== run.status
+      || !this.turnBelongsToRun(receipt.initial_turn_id, run.id)
+      || !this.turnBelongsToRun(receipt.final_turn_id, run.id)
+      || receipt.run_id !== selection.run_id
+      || receipt.initial_turn_id !== selection.initial_turn_id
+      || receipt.target_slot !== selection.target_slot
+      || receipt.version_id !== selection.version_id
+      || receipt.artifact_digest !== selection.artifact_digest
+      || receipt.candidate_id !== selection.candidate_id
+      || receipt.candidate_digest !== selection.candidate_digest
+      || receipt.effect_receipt_digest !== effectReceiptDigest(effect)
+      || effect.run_id !== selection.run_id
+      || effect.turn_id !== selection.initial_turn_id
+      || effect.action_name !== "runtime_inspect"
+      || effect.contract_version !== "1"
+      || effect.effect_class !== "local_read"
+      || effect.outcome !== "succeeded"
+      || reservation.run_id !== effect.run_id
+      || reservation.turn_id !== effect.turn_id
+      || reservation.state !== "terminal"
+      || reservation.action_name !== effect.action_name
+      || reservation.contract_version !== effect.contract_version
+      || reservation.action_digest !== effect.action_digest
+      || reservation.effect_class !== effect.effect_class) {
+      throw new Error(`Procedure Observation identity drifted: ${receipt.id}`);
+    }
+    return receipt;
+  }
+
+  private validateProcedureRetirement(receipt: ProcedureRetirementReceipt): ProcedureRetirementReceipt {
+    this.requireGrowthTargetSlot(receipt.target_slot);
+    const row = this.db.prepare(`SELECT * FROM self_registry_versions WHERE id = ?`)
+      .get(receipt.version_id) as SelfRegistryVersionRow | undefined;
+    if (!row) throw new Error(`Procedure Retirement version is missing: ${receipt.id}`);
+    const version = toSelfRegistryVersion(row);
+    if (version.state !== "retired"
+      || version.target_slot !== receipt.target_slot
+      || version.artifact_digest !== receipt.artifact_digest
+      || version.candidate_id !== receipt.candidate_id) {
+      throw new Error(`Procedure Retirement identity drifted: ${receipt.id}`);
+    }
+    if (receipt.reason === "failed_evaluation") {
+      if (!receipt.evaluation_id || receipt.observation_id || receipt.replacement_version_id) {
+        throw new Error(`Procedure Retirement reason drifted: ${receipt.id}`);
+      }
+      const evaluation = this.requireAdaptationEvaluation(receipt.evaluation_id);
+      if (evaluation.candidate_id !== receipt.candidate_id || evaluation.status !== "failed") {
+        throw new Error(`Procedure Retirement evaluation evidence drifted: ${receipt.id}`);
+      }
+    } else if (receipt.reason === "observed_failure") {
+      if (receipt.evaluation_id || !receipt.observation_id || receipt.replacement_version_id) {
+        throw new Error(`Procedure Retirement reason drifted: ${receipt.id}`);
+      }
+      const observation = this.requireProcedureObservation(receipt.observation_id);
+      if (observation.outcome !== "failed" || observation.version_id !== version.id) {
+        throw new Error(`Procedure Retirement observation evidence drifted: ${receipt.id}`);
+      }
+    } else {
+      if (receipt.evaluation_id || receipt.observation_id || !receipt.replacement_version_id) {
+        throw new Error(`Procedure Retirement reason drifted: ${receipt.id}`);
+      }
+      const replacement = this.db.prepare(`SELECT * FROM self_registry_versions WHERE id = ?`)
+        .get(receipt.replacement_version_id) as SelfRegistryVersionRow | undefined;
+      if (!replacement || toSelfRegistryVersion(replacement).target_slot !== receipt.target_slot) {
+        throw new Error(`Procedure Retirement replacement identity drifted: ${receipt.id}`);
+      }
+    }
+    return receipt;
+  }
+
+  private turnBelongsToRun(turnId: string, runId: string): boolean {
+    const row = this.db.prepare(`SELECT 1 AS present FROM turns WHERE id = ? AND run_id = ?`)
+      .get(turnId, runId) as { present: number } | undefined;
+    return row?.present === 1;
+  }
+
+  private assertProcedureSelectionPreLoop(run: RunRecord): void {
+    const turn = this.db.prepare(`
+      SELECT ordinal FROM turns WHERE id = ? AND run_id = ?
+    `).get(run.turn_id, run.id) as { ordinal: number } | undefined;
+    const executions = this.db.prepare(`
+      SELECT id, kind FROM run_executions WHERE run_id = ? ORDER BY ordinal ASC
+    `).all(run.id) as Array<{ id: string; kind: string }>;
+    const action = this.db.prepare(`
+      SELECT 1 AS present FROM action_reservations WHERE run_id = ? LIMIT 1
+    `).get(run.id) as { present: number } | undefined;
+    const dispatch = this.db.prepare(`
+      SELECT 1 AS present FROM model_dispatches WHERE run_id = ? LIMIT 1
+    `).get(run.id) as { present: number } | undefined;
+    if (!turn || turn.ordinal !== 1
+      || executions.length !== 1 || executions[0]?.kind !== "initial"
+      || action || dispatch) {
+      throw new Error(`Procedure Selection must occur before Run loop activity: ${run.id}`);
+    }
+  }
+
   private assertCompletedAdaptationEvidence(candidate: ProcedureCandidate): void {
     for (const runId of candidate.evidence_run_ids) {
       const run = this.getRun(runId);
@@ -4313,8 +5169,6 @@ export class SqliteRuntimeStore {
         || baseline.state === "inactive") {
         throw new Error(`Adaptation Evaluation baseline identity drifted: ${receipt.id}`);
       }
-    } else if (this.getAdaptationBaseline(receipt.target_slot).kind !== "none") {
-      throw new Error(`Adaptation Evaluation none baseline drifted: ${receipt.id}`);
     }
     return receipt;
   }
@@ -4409,6 +5263,90 @@ function toEvaluationReceipt(row: AdaptationEvaluationRow): EvaluationReceipt {
     throw new Error(`Adaptation Evaluation stored identity is invalid: ${row.id}`);
   }
   return receipt;
+}
+
+function toAdaptationActivationReceipt(row: AdaptationActivationRow): AdaptationActivationReceipt {
+  const receipt = parseAdaptationActivationReceipt(JSON.parse(row.receipt_json));
+  if (receipt.id !== row.id
+    || receipt.candidate_id !== row.candidate_id
+    || receipt.candidate_digest !== row.candidate_digest
+    || receipt.evaluation_id !== row.evaluation_id
+    || receipt.evaluation_digest !== row.evaluation_digest
+    || receipt.target_slot !== row.target_slot
+    || receipt.baseline.kind !== row.baseline_kind
+    || receipt.baseline.version_id !== row.baseline_version_id
+    || receipt.baseline.digest !== row.baseline_digest
+    || receipt.previous_version_id !== row.previous_version_id
+    || receipt.previous_artifact_digest !== row.previous_artifact_digest
+    || receipt.activated_version_id !== row.activated_version_id
+    || receipt.activated_artifact_digest !== row.activated_artifact_digest
+    || receipt.digest !== row.activation_digest
+    || receipt.created_at !== row.created_at) {
+    throw new Error(`Adaptation Activation stored identity is invalid: ${row.id}`);
+  }
+  return receipt;
+}
+
+function toProcedureSelectionReceipt(row: AdaptationSelectionRow): ProcedureSelectionReceipt {
+  const receipt = parseProcedureSelectionReceipt(JSON.parse(row.receipt_json));
+  if (receipt.id !== row.id
+    || receipt.run_id !== row.run_id
+    || receipt.initial_turn_id !== row.initial_turn_id
+    || receipt.target_slot !== row.target_slot
+    || receipt.version_id !== row.version_id
+    || receipt.artifact_digest !== row.artifact_digest
+    || receipt.candidate_id !== row.candidate_id
+    || receipt.candidate_digest !== row.candidate_digest
+    || receipt.growth_context_digest !== row.growth_context_digest
+    || receipt.digest !== row.selection_digest
+    || receipt.created_at !== row.created_at) {
+    throw new Error(`Procedure Selection stored identity is invalid: ${row.id}`);
+  }
+  return receipt;
+}
+
+function toProcedureObservationReceipt(row: AdaptationObservationRow): ProcedureObservationReceipt {
+  const receipt = parseProcedureObservationReceipt(JSON.parse(row.receipt_json));
+  if (receipt.id !== row.id
+    || receipt.selection_id !== row.selection_id
+    || receipt.run_id !== row.run_id
+    || receipt.initial_turn_id !== row.initial_turn_id
+    || receipt.final_turn_id !== row.final_turn_id
+    || receipt.target_slot !== row.target_slot
+    || receipt.version_id !== row.version_id
+    || receipt.artifact_digest !== row.artifact_digest
+    || receipt.candidate_id !== row.candidate_id
+    || receipt.candidate_digest !== row.candidate_digest
+    || receipt.effect_receipt_id !== row.effect_receipt_id
+    || receipt.effect_receipt_digest !== row.effect_receipt_digest
+    || receipt.outcome !== row.outcome
+    || receipt.digest !== row.observation_digest
+    || receipt.created_at !== row.created_at) {
+    throw new Error(`Procedure Observation stored identity is invalid: ${row.id}`);
+  }
+  return receipt;
+}
+
+function toProcedureRetirementReceipt(row: AdaptationRetirementRow): ProcedureRetirementReceipt {
+  const receipt = parseProcedureRetirementReceipt(JSON.parse(row.receipt_json));
+  if (receipt.id !== row.id
+    || receipt.target_slot !== row.target_slot
+    || receipt.version_id !== row.version_id
+    || receipt.artifact_digest !== row.artifact_digest
+    || receipt.candidate_id !== row.candidate_id
+    || receipt.reason !== row.reason
+    || receipt.evaluation_id !== row.evaluation_id
+    || receipt.observation_id !== row.observation_id
+    || receipt.replacement_version_id !== row.replacement_version_id
+    || receipt.digest !== row.retirement_digest
+    || receipt.created_at !== row.created_at) {
+    throw new Error(`Procedure Retirement stored identity is invalid: ${row.id}`);
+  }
+  return receipt;
+}
+
+function effectReceiptDigest(receipt: EffectReceipt): string {
+  return sha256(stableJson(receipt));
 }
 
 function evaluationSemanticIdentity(receipt: EvaluationReceipt): string {

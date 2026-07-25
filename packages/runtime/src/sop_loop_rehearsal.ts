@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { evidenceEventSchema, type RunResult } from "../../core/src/schemas.js";
 import { skillRegistryEntrySchema, type SkillRegistryEntry } from "../../core/src/skill_registry.js";
@@ -76,6 +76,7 @@ export async function runSopLoopRehearsal(args: {
 
   await mkdir(join(sandboxRepoRoot, "vault/skills"), { recursive: true });
   await mkdir(join(sandboxRepoRoot, "skills"), { recursive: true });
+  await writeStableCoreFixture(sandboxRepoRoot);
   await mkdir(firstStateRoot, { recursive: true });
   await mkdir(secondStateRoot, { recursive: true });
   await mkdir(activeVault, { recursive: true });
@@ -180,6 +181,21 @@ export async function runSopLoopRehearsal(args: {
   await store.writeText(markdownRef, renderSopLoopRehearsalReport(report));
   await store.appendJsonl("memory/episodes/events.jsonl", evidenceEvent);
   return report;
+}
+
+async function writeStableCoreFixture(repoRoot: string): Promise<void> {
+  const docsRoot = join(repoRoot, "docs");
+  await mkdir(docsRoot, { recursive: true });
+  await writeFile(join(docsRoot, "CURRENT_DIRECTION.md"), [
+    "# Current Direction",
+    "",
+    "Deterministic local fixture for the SOP loop rehearsal."
+  ].join("\n"), "utf8");
+  await writeFile(join(docsRoot, "INDEX.md"), [
+    "# Documentation Index",
+    "",
+    "Stable Core fixture index."
+  ].join("\n"), "utf8");
 }
 
 export function renderSopLoopRehearsalReport(report: SopLoopRehearsalReport): string {

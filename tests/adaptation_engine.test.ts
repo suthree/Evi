@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,11 +7,15 @@ import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 import {
   ADAPTATION_EVALUATOR_VERSION,
+  ActionGateway,
   AdaptationEngine,
+  createRuntimeInspectAction,
   materializeEvaluationReceipt,
+  materializeProcedureObservationReceipt,
   SqliteRuntimeStore,
   type ProcedureCandidateInput
 } from "../packages/kernel/src/index.js";
+import { stableJson } from "../packages/kernel/src/canonical_json.js";
 import { testExecutionLock } from "./vnext_test_support.js";
 
 test("Adaptation Engine persists one inactive candidate and passed Evaluation Receipt across reopen", async () => {
@@ -143,21 +148,19 @@ test("incomplete inactive candidate receives one failed Evaluation Receipt witho
   }
 });
 
-test("a new inactive candidate evaluates against the exact active Self Registry baseline", async () => {
+test("first none-baseline Evaluation remains readable after a real activation and replacement compares to the exact active baseline", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-adaptation-baseline-"));
   const sqlite = join(fixture, "runtime.sqlite");
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
   try {
     const engine = new AdaptationEngine(store);
     const active = engine.propose(validCandidate(completedRun(store, fixture, "Active baseline evidence.")));
-    const raw = new DatabaseSync(sqlite);
-    try {
-      raw.prepare("UPDATE self_registry_versions SET state = 'active', updated_at = ? WHERE id = ?")
-        .run(new Date().toISOString(), active.registry_version.id);
-    } finally {
-      raw.close();
-    }
+    const firstEvaluation = engine.evaluate(active.candidate.id);
+    assert.deepEqual(firstEvaluation.baseline, { kind: "none", version_id: null, digest: null });
+    const firstActivation = engine.activate(active.candidate.id);
+    assert.equal(firstActivation.transition, "activated");
     assert.equal(engine.inspect(active.candidate.id)?.registry_version.state, "active");
+    assert.equal(engine.inspectEvaluation(firstEvaluation.id)?.digest, firstEvaluation.digest);
 
     const proposed = engine.propose({
       ...validCandidate(completedRun(store, fixture, "Replacement candidate evidence.")),
@@ -170,29 +173,6 @@ test("a new inactive candidate evaluates against the exact active Self Registry 
       version_id: active.registry_version.id,
       digest: active.registry_version.artifact_digest
     });
-
-    const forgedNoneBaseline = materializeEvaluationReceipt({
-      candidate: proposed.candidate,
-      baseline: { kind: "none", version_id: null, digest: null },
-      evaluator_version: receipt.evaluator_version,
-      checks: receipt.checks,
-      created_at: receipt.created_at
-    });
-    const tamper = new DatabaseSync(sqlite);
-    try {
-      tamper.prepare(`
-        UPDATE adaptation_evaluations
-        SET id = ?, baseline_kind = 'none', baseline_version_id = NULL,
-            baseline_digest = NULL, evaluation_digest = ?, receipt_json = ?
-        WHERE id = ?
-      `).run(forgedNoneBaseline.id, forgedNoneBaseline.digest, JSON.stringify(forgedNoneBaseline), receipt.id);
-    } finally {
-      tamper.close();
-    }
-    assert.throws(
-      () => engine.inspectEvaluation(forgedNoneBaseline.id),
-      /none baseline drifted/
-    );
 
     const verify = new DatabaseSync(sqlite, { readOnly: true });
     try {
@@ -245,6 +225,16 @@ test("Adaptation Engine rejects occupied target slots, unsupported authority, an
       () => engine.propose({ ...validCandidate(secondRun), active: true } as ProcedureCandidateInput),
       /fields are invalid/
     );
+    const generic = engine.propose({
+      ...validCandidate(secondRun),
+      target_slot: "procedure.runtime-recovery",
+      summary: "A generic adaptation candidate remains outside the P0 Growth Lifecycle slot."
+    });
+    engine.evaluate(generic.candidate.id);
+    assert.throws(
+      () => engine.activate(generic.candidate.id),
+      /only supports procedure\.runtime-inspection/
+    );
     assert.throws(
       () => engine.propose({
         ...validCandidate(secondRun),
@@ -254,7 +244,7 @@ test("Adaptation Engine rejects occupied target slots, unsupported authority, an
     );
     const raw = new DatabaseSync(sqlite, { readOnly: true });
     try {
-      assert.equal(count(raw, "adaptation_candidates"), 1);
+      assert.equal(count(raw, "adaptation_candidates"), 2);
     } finally {
       raw.close();
     }
@@ -406,6 +396,608 @@ test("candidate and Evaluation transactions expose no partial authoritative rows
   }
 });
 
+test("Growth Lifecycle migrates a v12 store and rolls back a failed activation without changing the pending version", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-growth-schema-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  let store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    store.close();
+    const legacy = new DatabaseSync(sqlite);
+    try {
+      legacy.exec(`
+        PRAGMA foreign_keys = OFF;
+        DROP TABLE adaptation_retirements;
+        DROP TABLE adaptation_observations;
+        DROP TABLE adaptation_selections;
+        DROP TABLE adaptation_activations;
+        UPDATE schema_meta SET value = '12' WHERE key = 'schema_version';
+      `);
+    } finally {
+      legacy.close();
+    }
+
+    store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+    const migrated = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      assert.equal((migrated.prepare("SELECT value FROM schema_meta WHERE key = 'schema_version'").get() as { value: string }).value, "13");
+      for (const table of ["adaptation_activations", "adaptation_selections", "adaptation_observations", "adaptation_retirements"]) {
+        assert.ok(migrated.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(table));
+      }
+    } finally {
+      migrated.close();
+    }
+
+    const engine = new AdaptationEngine(store);
+    const candidate = engine.propose(validCandidate(completedRun(store, fixture, "Activation rollback evidence.")));
+    engine.evaluate(candidate.candidate.id);
+    const fail = new DatabaseSync(sqlite);
+    try {
+      fail.exec(`
+        CREATE TRIGGER fail_growth_activation
+        BEFORE INSERT ON adaptation_activations
+        BEGIN SELECT RAISE(ABORT, 'synthetic activation crash'); END
+      `);
+    } finally {
+      fail.close();
+    }
+    assert.throws(() => engine.activate(candidate.candidate.id), /synthetic activation crash/);
+    assert.equal(engine.inspect(candidate.candidate.id)?.registry_version.state, "inactive");
+    const verify = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      assert.equal(countWhere(verify, "self_registry_versions", "state = 'active'"), 0);
+      assert.equal(count(verify, "adaptation_activations"), 0);
+    } finally {
+      verify.close();
+    }
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("Growth Lifecycle rejects post-loop selection and keeps a selected rendered context sticky across a replacement", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-growth-selection-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const engine = new AdaptationEngine(store);
+    const first = activateInspectionProcedure(engine, store, fixture, "First active procedure evidence.");
+    const inspect = createRuntimeInspectAction(store);
+    const gateway = new ActionGateway(store, [inspect]);
+
+    const late = store.beginRun({
+      request: "Refuse post-loop selection.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const lateReceipt = await completedRuntimeInspect(gateway, late.run.id, late.run.turn_id, "late-selection");
+    assert.ok(lateReceipt.id);
+    assert.throws(
+      () => engine.selectForRun(late.run.id, late.run.turn_id),
+      /before Run loop activity/
+    );
+    store.failRun(late.execution, "synthetic late-selection failure");
+
+    const selectedRun = store.beginRun({
+      request: "Bind the procedure before loop activity.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const selection = engine.selectForRun(selectedRun.run.id, selectedRun.run.turn_id);
+    const firstContext = engine.renderSelectedContext(selection.id);
+    assert.match(firstContext, new RegExp(first.name));
+
+    const replacement = engine.propose({
+      ...validCandidate(completedRun(store, fixture, "Replacement procedure evidence.")),
+      summary: "Use the bounded runtime inspection proof after a replacement becomes active."
+    });
+    engine.evaluate(replacement.candidate.id);
+    engine.activate(replacement.candidate.id);
+    assert.equal(engine.inspect(first.id)?.registry_version.state, "retired");
+    assert.equal(engine.renderSelectedContext(selection.id), firstContext);
+
+    const raw = new DatabaseSync(sqlite);
+    try {
+      raw.prepare("UPDATE adaptation_selections SET growth_context_digest = ? WHERE id = ?")
+        .run("0".repeat(64), selection.id);
+    } finally {
+      raw.close();
+    }
+    assert.throws(() => engine.renderSelectedContext(selection.id), /stored identity is invalid/);
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("Growth observations require an exact successful runtime_inspect receipt and fail closed on cross-Run, contract, and idempotency drift", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-growth-observation-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const engine = new AdaptationEngine(store);
+    const active = activateInspectionProcedure(engine, store, fixture, "Observation active procedure evidence.");
+    const inspect = createRuntimeInspectAction(store);
+    const gateway = new ActionGateway(store, [inspect]);
+    const subject = store.beginRun({
+      request: "Bind and verify an exact runtime inspection receipt.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const selection = engine.selectForRun(subject.run.id, subject.run.turn_id);
+
+    const wrongReservation = store.reserveAction({
+      run_id: subject.run.id,
+      turn_id: subject.run.turn_id,
+      invocation_id: "not-runtime-inspect",
+      action_name: "unrelated_read",
+      contract_version: "1",
+      action_digest: "f".repeat(64),
+      effect_class: "local_read",
+      decision_reason: "focused negative observation fixture",
+      arguments: {}
+    });
+    store.markActionDispatching(wrongReservation.reservation.id);
+    const wrongReceipt = store.completeAction(wrongReservation.reservation.id, {
+      outcome: "succeeded",
+      summary: "The unrelated local read completed.",
+      output: {}
+    }, false).receipt;
+    const subjectReceipt = await completedRuntimeInspect(gateway, subject.run.id, subject.run.turn_id, "subject-inspect");
+    store.completeRun(subject.execution, "verified completion after runtime inspection");
+
+    const other = store.beginRun({
+      request: "Produce a different Run receipt.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const otherReceipt = await completedRuntimeInspect(gateway, other.run.id, other.run.turn_id, "other-inspect");
+    store.completeRun(other.execution, "other terminal completion");
+
+    assert.throws(
+      () => engine.observe(selection.id, wrongReceipt.id),
+      /request drifted/
+    );
+    assert.throws(
+      () => engine.observe(selection.id, otherReceipt.id),
+      /request drifted/
+    );
+    const observation = engine.observe(selection.id, subjectReceipt.id);
+    assert.equal(observation.outcome, "completed");
+    assert.equal(observation.effect_receipt_id, subjectReceipt.id);
+    assert.equal(engine.observe(selection.id, subjectReceipt.id).digest, observation.digest);
+    assert.throws(
+      () => engine.observe(selection.id, otherReceipt.id),
+      /request drifted/
+    );
+
+    assert.throws(
+      () => engine.retire(active.id),
+      /requires a failed Observation/
+    );
+
+    const failedRun = store.beginRun({
+      request: "Capture a failed reuse observation before retirement.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const failedSelection = engine.selectForRun(failedRun.run.id, failedRun.run.turn_id);
+    const failedReceipt = await completedRuntimeInspect(gateway, failedRun.run.id, failedRun.run.turn_id, "failed-inspect");
+    store.failRun(failedRun.execution, "synthetic verified reuse failure");
+    const failedObservation = engine.observe(failedSelection.id, failedReceipt.id);
+    assert.equal(failedObservation.outcome, "failed");
+    const retirement = engine.retire(active.id, failedObservation.id);
+    assert.equal(retirement.reason, "observed_failure");
+    assert.equal(engine.retire(active.id, failedObservation.id).digest, retirement.digest);
+    assert.equal(engine.inspect(active.id)?.registry_version.state, "retired");
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("terminal Run settlement closes the Growth loop from selected receipt through observation and failed reuse retirement", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-growth-terminal-loop-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const engine = new AdaptationEngine(store);
+    const inspect = createRuntimeInspectAction(store);
+    const gateway = new ActionGateway(store, [inspect]);
+
+    const evidenceRun = completedRun(store, fixture, "Verified initial Growth evidence.");
+    const candidate = engine.propose(validCandidate(evidenceRun));
+    engine.evaluate(candidate.candidate.id);
+    const activation = engine.activate(candidate.candidate.id);
+
+    const retained = store.beginRun({
+      request: "Reuse the active procedure and retain it after a verified inspection.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const retainedSelection = engine.selectForRun(retained.run.id, retained.run.turn_id);
+    const retainedReceipt = await completedRuntimeInspect(
+      gateway,
+      retained.run.id,
+      retained.run.turn_id,
+      "retained-inspection"
+    );
+    store.completeRun(retained.execution, "terminal success");
+
+    const retainedProjection = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      assert.equal(
+        retainedProjection.prepare("SELECT state FROM self_registry_versions WHERE id = ?")
+          .get(activation.activated_version_id)?.state,
+        "active"
+      );
+      assert.equal(
+        retainedProjection.prepare("SELECT COUNT(*) AS count FROM adaptation_retirements WHERE version_id = ?")
+          .get(activation.activated_version_id)?.count,
+        0
+      );
+    } finally {
+      retainedProjection.close();
+    }
+
+    const retired = store.beginRun({
+      request: "Reuse the active procedure and record a verified terminal failure.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const retiredSelection = engine.selectForRun(retired.run.id, retired.run.turn_id);
+    const retiredReceipt = await completedRuntimeInspect(
+      gateway,
+      retired.run.id,
+      retired.run.turn_id,
+      "retired-inspection"
+    );
+    store.failRun(retired.execution, "deterministic terminal failure");
+
+    const raw = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      const retainedSelectionRow = raw.prepare(`
+          SELECT run_id, version_id, candidate_id
+          FROM adaptation_selections
+          WHERE id = ?
+        `).get(retainedSelection.id) as { run_id: string; version_id: string; candidate_id: string };
+      assert.deepEqual({ ...retainedSelectionRow }, {
+        run_id: retained.run.id,
+        version_id: activation.activated_version_id,
+        candidate_id: candidate.candidate.id
+      });
+      const retainedReceiptRow = raw.prepare(`
+          SELECT id, run_id, turn_id, action_name, contract_version, outcome
+          FROM effect_receipts
+          WHERE id = ?
+        `).get(retainedReceipt.id) as {
+          id: string;
+          run_id: string;
+          turn_id: string;
+          action_name: string;
+          contract_version: string;
+          outcome: string;
+        };
+      assert.deepEqual({ ...retainedReceiptRow }, {
+        id: retainedReceipt.id,
+        run_id: retained.run.id,
+        turn_id: retained.run.turn_id,
+        action_name: "runtime_inspect",
+        contract_version: "1",
+        outcome: "succeeded"
+      });
+      const retainedObservation = raw.prepare(`
+          SELECT selection_id, effect_receipt_id, effect_receipt_digest, outcome
+          FROM adaptation_observations
+          WHERE selection_id = ?
+        `).get(retainedSelection.id) as {
+          selection_id: string;
+          effect_receipt_id: string;
+          effect_receipt_digest: string;
+          outcome: string;
+        };
+      assert.deepEqual({ ...retainedObservation }, {
+        selection_id: retainedSelection.id,
+        effect_receipt_id: retainedReceipt.id,
+        effect_receipt_digest: receiptDigest(retainedReceipt),
+        outcome: "completed"
+      });
+
+      const failedObservation = raw.prepare(`
+        SELECT id, selection_id, effect_receipt_id, outcome
+        FROM adaptation_observations
+        WHERE selection_id = ?
+      `).get(retiredSelection.id) as {
+        id: string;
+        selection_id: string;
+        effect_receipt_id: string;
+        outcome: string;
+      };
+      assert.deepEqual({ ...failedObservation }, {
+        id: failedObservation.id,
+        selection_id: retiredSelection.id,
+        effect_receipt_id: retiredReceipt.id,
+        outcome: "failed"
+      });
+      const retirement = raw.prepare(`
+          SELECT reason, observation_id, version_id
+          FROM adaptation_retirements
+          WHERE version_id = ?
+        `).get(activation.activated_version_id) as {
+          reason: string;
+          observation_id: string;
+          version_id: string;
+        };
+      assert.deepEqual({ ...retirement }, {
+        reason: "observed_failure",
+        observation_id: failedObservation.id,
+        version_id: activation.activated_version_id
+      });
+      assert.equal(
+        raw.prepare("SELECT state FROM self_registry_versions WHERE id = ?")
+          .get(activation.activated_version_id)?.state,
+        "retired"
+      );
+      assert.equal(
+        raw.prepare(`
+          SELECT COUNT(*) AS count
+          FROM runtime_events
+          WHERE run_id IN (?, ?) AND kind LIKE 'growth_observation_%'
+        `).get(retained.run.id, retired.run.id)?.count,
+        0
+      );
+    } finally {
+      raw.close();
+    }
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("a failed selected Run records observation without retiring a version already superseded by a replacement", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-growth-superseded-observation-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const engine = new AdaptationEngine(store);
+    const inspect = createRuntimeInspectAction(store);
+    const gateway = new ActionGateway(store, [inspect]);
+    const first = engine.propose(validCandidate(completedRun(store, fixture, "First active procedure evidence.")));
+    engine.evaluate(first.candidate.id);
+    const firstActivation = engine.activate(first.candidate.id);
+
+    const selected = store.beginRun({
+      request: "Bind the first procedure before it is replaced.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const selection = engine.selectForRun(selected.run.id, selected.run.turn_id);
+
+    const replacement = engine.propose({
+      ...validCandidate(completedRun(store, fixture, "Replacement procedure evidence.")),
+      summary: "A replacement procedure supersedes the selected active version before its terminal observation."
+    });
+    engine.evaluate(replacement.candidate.id);
+    const replacementActivation = engine.activate(replacement.candidate.id);
+    const receipt = await completedRuntimeInspect(gateway, selected.run.id, selected.run.turn_id, "superseded-inspection");
+    store.failRun(selected.execution, "deterministic failure after replacement activation");
+
+    const raw = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      assert.deepEqual({
+        ...raw.prepare(`
+          SELECT selection_id, effect_receipt_id, outcome
+          FROM adaptation_observations
+          WHERE selection_id = ?
+        `).get(selection.id) as {
+          selection_id: string;
+          effect_receipt_id: string;
+          outcome: string;
+        }
+      }, {
+        selection_id: selection.id,
+        effect_receipt_id: receipt.id,
+        outcome: "failed"
+      });
+      assert.deepEqual({
+        ...raw.prepare(`
+          SELECT reason, replacement_version_id
+          FROM adaptation_retirements
+          WHERE version_id = ?
+        `).get(firstActivation.activated_version_id) as {
+          reason: string;
+          replacement_version_id: string;
+        }
+      }, {
+        reason: "superseded",
+        replacement_version_id: replacementActivation.activated_version_id
+      });
+      assert.equal(
+        raw.prepare("SELECT COUNT(*) AS count FROM adaptation_retirements WHERE version_id = ?")
+          .get(firstActivation.activated_version_id)?.count,
+        1
+      );
+      assert.equal(
+        raw.prepare("SELECT state FROM self_registry_versions WHERE id = ?")
+          .get(replacementActivation.activated_version_id)?.state,
+        "active"
+      );
+    } finally {
+      raw.close();
+    }
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("terminal Growth settlement records observation drift as unverified without changing the selected version", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-growth-terminal-drift-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const engine = new AdaptationEngine(store);
+    const active = activateInspectionProcedure(engine, store, fixture, "Active Growth drift evidence.");
+    const inspect = createRuntimeInspectAction(store);
+    const gateway = new ActionGateway(store, [inspect]);
+    const subject = store.beginRun({
+      request: "Record a terminal observation drift without changing the active procedure.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const selection = engine.selectForRun(subject.run.id, subject.run.turn_id);
+    const unrelatedReservation = store.reserveAction({
+      run_id: subject.run.id,
+      turn_id: subject.run.turn_id,
+      invocation_id: "unrelated-observation",
+      action_name: "unrelated_read",
+      contract_version: "1",
+      action_digest: "f".repeat(64),
+      effect_class: "local_read",
+      decision_reason: "Seed an existing non-canonical observation for automatic terminal drift handling.",
+      arguments: {}
+    });
+    store.markActionDispatching(unrelatedReservation.reservation.id);
+    const unrelatedReceipt = store.completeAction(unrelatedReservation.reservation.id, {
+      outcome: "succeeded",
+      summary: "An unrelated local read completed.",
+      output: {}
+    }, false).receipt;
+    const canonicalReceipt = await completedRuntimeInspect(
+      gateway,
+      subject.run.id,
+      subject.run.turn_id,
+      "canonical-observation"
+    );
+    const seeded = materializeProcedureObservationReceipt({
+      selection,
+      final_turn_id: subject.run.turn_id,
+      effect_receipt_id: unrelatedReceipt.id,
+      effect_receipt_digest: receiptDigest(unrelatedReceipt),
+      outcome: "completed"
+    });
+    const seed = new DatabaseSync(sqlite);
+    try {
+      seed.prepare(`
+        INSERT INTO adaptation_observations (
+          id, selection_id, run_id, initial_turn_id, final_turn_id, target_slot,
+          version_id, artifact_digest, candidate_id, candidate_digest, outcome,
+          effect_receipt_id, effect_receipt_digest, observation_digest, receipt_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        seeded.id,
+        seeded.selection_id,
+        seeded.run_id,
+        seeded.initial_turn_id,
+        seeded.final_turn_id,
+        seeded.target_slot,
+        seeded.version_id,
+        seeded.artifact_digest,
+        seeded.candidate_id,
+        seeded.candidate_digest,
+        seeded.outcome,
+        seeded.effect_receipt_id,
+        seeded.effect_receipt_digest,
+        seeded.digest,
+        JSON.stringify(seeded),
+        seeded.created_at
+      );
+    } finally {
+      seed.close();
+    }
+    store.completeRun(subject.execution, "terminal drift evidence");
+
+    const raw = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      assert.equal(raw.prepare("SELECT status FROM runs WHERE id = ?").get(subject.run.id)?.status, "completed");
+      assert.equal(countWhere(raw, "adaptation_observations", `selection_id = '${selection.id}'`), 1);
+      assert.equal(countWhere(raw, "adaptation_retirements", `version_id = '${active.id}'`), 0);
+      assert.equal(raw.prepare("SELECT state FROM self_registry_versions WHERE candidate_id = ?")
+        .get(active.id)?.state, "active");
+      const event = raw.prepare(`
+        SELECT run_id, payload_json
+        FROM runtime_events
+        WHERE run_id = ? AND kind = 'growth_observation_unverified'
+      `).get(subject.run.id) as { run_id: string; payload_json: string };
+      assert.equal(event.run_id, subject.run.id);
+      assert.deepEqual(JSON.parse(event.payload_json), {
+        selection_id: selection.id,
+        selection_digest: selection.digest,
+        reason: "observation_drift",
+        observation_id: seeded.id,
+        observation_digest: seeded.digest,
+        observed_receipt: {
+          id: unrelatedReceipt.id,
+          digest: receiptDigest(unrelatedReceipt)
+        },
+        canonical_receipt: {
+          id: canonicalReceipt.id,
+          digest: receiptDigest(canonicalReceipt)
+        }
+      });
+    } finally {
+      raw.close();
+    }
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
+test("terminal Growth settlement leaves no observation or retirement for zero or multiple canonical receipts", async () => {
+  const fixture = await mkdtemp(join(tmpdir(), "evi-growth-terminal-unverified-"));
+  const sqlite = join(fixture, "runtime.sqlite");
+  const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
+  try {
+    const engine = new AdaptationEngine(store);
+    const active = activateInspectionProcedure(engine, store, fixture, "Active unverified Growth evidence.");
+    const inspect = createRuntimeInspectAction(store);
+    const gateway = new ActionGateway(store, [inspect]);
+
+    const withoutReceipt = store.beginRun({
+      request: "Complete without canonical inspection evidence.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const noReceiptSelection = engine.selectForRun(withoutReceipt.run.id, withoutReceipt.run.turn_id);
+    store.completeRun(withoutReceipt.execution, "no receipt");
+
+    const manyReceipts = store.beginRun({
+      request: "Complete after two canonical inspection receipts.",
+      execution_lock: testExecutionLock({ cwd: fixture, contracts: [inspect.contract] })
+    }, 30_000);
+    const manyReceiptSelection = engine.selectForRun(manyReceipts.run.id, manyReceipts.run.turn_id);
+    const first = await completedRuntimeInspect(gateway, manyReceipts.run.id, manyReceipts.run.turn_id, "first");
+    const second = await completedRuntimeInspect(gateway, manyReceipts.run.id, manyReceipts.run.turn_id, "second");
+    store.completeRun(manyReceipts.execution, "multiple receipts");
+
+    const raw = new DatabaseSync(sqlite, { readOnly: true });
+    try {
+      assert.equal(countWhere(raw, "adaptation_observations", `selection_id IN ('${noReceiptSelection.id}', '${manyReceiptSelection.id}')`), 0);
+      assert.equal(countWhere(raw, "adaptation_retirements", `version_id = '${active.id}'`), 0);
+      assert.equal(raw.prepare("SELECT state FROM self_registry_versions WHERE candidate_id = ?")
+        .get(active.id)?.state, "active");
+      const events = raw.prepare(`
+        SELECT run_id, payload_json
+        FROM runtime_events
+        WHERE kind = 'growth_observation_unverified'
+        ORDER BY seq ASC
+      `).all() as Array<{ run_id: string; payload_json: string }>;
+      assert.equal(events.length, 2);
+      assert.deepEqual(JSON.parse(events[0]!.payload_json), {
+        selection_id: noReceiptSelection.id,
+        selection_digest: noReceiptSelection.digest,
+        reason: "no_canonical_receipt"
+      });
+      assert.deepEqual(JSON.parse(events[1]!.payload_json), {
+        selection_id: manyReceiptSelection.id,
+        selection_digest: manyReceiptSelection.digest,
+        reason: "ambiguous_canonical_receipts",
+        canonical_receipts: [
+          { id: first.id, digest: receiptDigest(first) },
+          { id: second.id, digest: receiptDigest(second) }
+        ]
+      });
+    } finally {
+      raw.close();
+    }
+  } finally {
+    store.close();
+    await rm(fixture, { recursive: true, force: true });
+  }
+});
+
 function completedRun(store: SqliteRuntimeStore, cwd: string, answer: string): string {
   const started = store.beginRun({
     request: "Produce verified evidence for an inactive adaptation candidate.",
@@ -416,7 +1008,7 @@ function completedRun(store: SqliteRuntimeStore, cwd: string, answer: string): s
 
 function validCandidate(runId: string): ProcedureCandidateInput {
   return {
-    target_slot: "procedure.runtime-recovery",
+    target_slot: "procedure.runtime-inspection",
     name: "Recover a paused runtime",
     summary: "Reuse exact persisted evidence before retrying interrupted work.",
     trigger_conditions: ["A vNext Run is paused with canonical recovery evidence."],
@@ -429,6 +1021,36 @@ function validCandidate(runId: string): ProcedureCandidateInput {
   };
 }
 
+function activateInspectionProcedure(
+  engine: AdaptationEngine,
+  store: SqliteRuntimeStore,
+  cwd: string,
+  evidence: string
+) {
+  const candidate = engine.propose(validCandidate(completedRun(store, cwd, evidence)));
+  engine.evaluate(candidate.candidate.id);
+  engine.activate(candidate.candidate.id);
+  return candidate.candidate;
+}
+
+async function completedRuntimeInspect(
+  gateway: ActionGateway,
+  runId: string,
+  turnId: string,
+  invocationId: string
+) {
+  const result = await gateway.invoke({
+    run_id: runId,
+    turn_id: turnId,
+    invocation_id: invocationId,
+    action_name: "runtime_inspect",
+    arguments: {}
+  });
+  assert.equal(result.status, "completed");
+  if (result.status !== "completed") throw new Error("runtime_inspect fixture did not complete");
+  return result.receipt;
+}
+
 function count(db: DatabaseSync, table: string): number {
   const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number };
   return Number(row.count);
@@ -437,4 +1059,8 @@ function count(db: DatabaseSync, table: string): number {
 function countWhere(db: DatabaseSync, table: string, where: string): number {
   const row = db.prepare(`SELECT COUNT(*) AS count FROM ${table} WHERE ${where}`).get() as { count: number };
   return Number(row.count);
+}
+
+function receiptDigest(receipt: unknown): string {
+  return createHash("sha256").update(stableJson(receipt)).digest("hex");
 }

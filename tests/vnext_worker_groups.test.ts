@@ -722,7 +722,7 @@ test("schema 11 migration reconciles an unresolved historical Worker Action thro
   }
 });
 
-test("schema 12 fails closed when a Worker Group binding disappears", async () => {
+test("schema 13 fails closed when a Worker Group binding disappears", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-worker-group-corrupt-binding-"));
   const sqlite = join(fixture, "runtime.sqlite");
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
@@ -750,14 +750,14 @@ test("schema 12 fails closed when a Worker Group binding disappears", async () =
   try {
     assert.throws(
       () => new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" }),
-      /Unsupported vNext runtime schema version: 12\/mixed:worker-groups/iu
+      /Unsupported vNext runtime schema version: 13\/mixed:worker-groups/iu
     );
   } finally {
     await rm(fixture, { recursive: true, force: true });
   }
 });
 
-test("schema 12 fails closed when binding counts match but a Worker relation is orphaned", async () => {
+test("schema 13 fails closed when binding counts match but a Worker relation is orphaned", async () => {
   const fixture = await mkdtemp(join(tmpdir(), "evi-worker-group-corrupt-orphan-"));
   const sqlite = join(fixture, "runtime.sqlite");
   const store = new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" });
@@ -787,7 +787,7 @@ test("schema 12 fails closed when binding counts match but a Worker relation is 
   try {
     assert.throws(
       () => new SqliteRuntimeStore(sqlite, { state_profile: "stable_cli" }),
-      /Unsupported vNext runtime schema version: 12\/mixed:worker-groups/iu
+      /Unsupported vNext runtime schema version: 13\/mixed:worker-groups/iu
     );
   } finally {
     await rm(fixture, { recursive: true, force: true });
