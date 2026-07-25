@@ -286,7 +286,7 @@ test("fresh project design bootstrap plan can open the first core iteration", as
     assert.equal(first.iteration.layer, "core_runtime");
     assert.equal(first.iteration.owner_surface, "project_design");
     assert.equal(first.iteration.proposed_slice, "core_project_design_fresh_bootstrap");
-    assert.equal(first.iteration.source_ref, "docs/RUNTIME_CONTRACT.md");
+    assert.equal(first.iteration.source_ref, "docs/CURRENT_DIRECTION.md");
     assert.equal(first.iteration.implementation_contract?.source_artifact_id, "project_design_bootstrap_contract_source");
     assert.equal(first.iteration.implementation_contract?.source_proposed_slice, "fresh_state_no_verified_iteration");
     assert.equal(first.iteration.verification_commands.includes("pnpm run runtime -- governance project-design --state-root <state-root>"), true);

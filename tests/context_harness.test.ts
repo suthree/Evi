@@ -59,6 +59,129 @@ test("context attention profiles route normal, governance, and recovery tasks de
   }), "recovery");
 });
 
+test("stable core routes new snapshots and legacy snapshots through the current direction", async () => {
+  const fixture = await createRepoFixture();
+  try {
+    await writeRepoFile(fixture.repoRoot, "docs/CURRENT_DIRECTION.md", "CURRENT_DIRECTION_SENTINEL");
+    await writeRepoFile(fixture.repoRoot, "core/soul.md", "SOUL_SENTINEL");
+    await writeRepoFile(fixture.repoRoot, "core/memory.md", "MEMORY_SENTINEL");
+    await writeRepoFile(fixture.repoRoot, "docs/INDEX.md", "DOCUMENTATION_ROUTER_SENTINEL");
+    await writeRepoFile(fixture.repoRoot, "docs/RUNTIME_CONTRACT.md", "LEGACY_RUNTIME_CONTRACT_SENTINEL");
+    const trigger = triggerSchema.parse({
+      type: "external_task",
+      source: "prompt",
+      text: "Inspect the active context route."
+    });
+    const opportunity = opportunitySchema.parse({
+      source: "explicit_task",
+      description: "Inspect the active context route."
+    });
+    const snapshot = await buildTurnSnapshot(fixture.store, trigger, trigger.text, opportunity);
+
+    assert.deepEqual(snapshot.stable_context, {
+      current_direction_ref: "docs/CURRENT_DIRECTION.md",
+      soul_digest_ref: "core/soul.md",
+      memory_policy_ref: "core/memory.md",
+      documentation_router_ref: "docs/INDEX.md"
+    });
+    const rendered = await renderContextBundleWithManifest(fixture.store, snapshot);
+    const stableCore = rendered.manifest.sections.find((section) => section.title === "Stable Core");
+
+    assert.deepEqual(stableCore?.refs, [
+      "docs/CURRENT_DIRECTION.md",
+      "core/soul.md",
+      "core/memory.md",
+      "docs/INDEX.md"
+    ]);
+    assert.equal(stableCore?.item_count, 4);
+    assert.match(rendered.markdown, /CURRENT_DIRECTION_SENTINEL/);
+    assert.doesNotMatch(rendered.markdown, /LEGACY_RUNTIME_CONTRACT_SENTINEL/);
+    assert.equal(rendered.markdown.indexOf("CURRENT_DIRECTION_SENTINEL") < rendered.markdown.indexOf("SOUL_SENTINEL"), true);
+    assert.equal(rendered.markdown.indexOf("SOUL_SENTINEL") < rendered.markdown.indexOf("MEMORY_SENTINEL"), true);
+    assert.equal(rendered.markdown.indexOf("MEMORY_SENTINEL") < rendered.markdown.indexOf("DOCUMENTATION_ROUTER_SENTINEL"), true);
+
+    const legacySnapshot = {
+      ...snapshot,
+      stable_context: {
+        soul_digest_ref: "core/soul.md",
+        memory_policy_ref: "core/memory.md",
+        runtime_contract_ref: "docs/RUNTIME_CONTRACT.md"
+      }
+    };
+    const renderedLegacySnapshot = await renderContextBundleWithManifest(fixture.store, legacySnapshot);
+
+    assert.match(renderedLegacySnapshot.markdown, /CURRENT_DIRECTION_SENTINEL/);
+    assert.doesNotMatch(renderedLegacySnapshot.markdown, /LEGACY_RUNTIME_CONTRACT_SENTINEL/);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+test("stable core fails closed when current direction or documentation router is missing or blank", async () => {
+  const cases = [
+    { ref: "docs/CURRENT_DIRECTION.md", value: null },
+    { ref: "docs/CURRENT_DIRECTION.md", value: " \n\t" },
+    { ref: "docs/INDEX.md", value: null },
+    { ref: "docs/INDEX.md", value: " \n\t" }
+  ] as const;
+  for (const scenario of cases) {
+    const fixture = await createRepoFixture();
+    try {
+      await writeRepoFile(fixture.repoRoot, "docs/RUNTIME_CONTRACT.md", "LEGACY_RUNTIME_CONTRACT_MUST_NOT_FALLBACK");
+      if (scenario.value === null) {
+        await rm(join(fixture.repoRoot, scenario.ref));
+      } else {
+        await writeRepoFile(fixture.repoRoot, scenario.ref, scenario.value);
+      }
+      const trigger = triggerSchema.parse({
+        type: "external_task",
+        source: "prompt",
+        text: "Render stable context."
+      });
+      const opportunity = opportunitySchema.parse({
+        source: "explicit_task",
+        description: "Render stable context."
+      });
+      const snapshot = await buildTurnSnapshot(fixture.store, trigger, trigger.text, opportunity);
+
+      await assert.rejects(
+        renderContextBundleWithManifest(fixture.store, snapshot),
+        new RegExp(`Missing or blank required Stable Core document: ${scenario.ref.replace(".", "\\.")}`)
+      );
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+});
+
+test("stable core bounds an overlong current direction document", async () => {
+  const fixture = await createRepoFixture();
+  try {
+    await writeRepoFile(
+      fixture.repoRoot,
+      "docs/CURRENT_DIRECTION.md",
+      `CURRENT_DIRECTION_HEAD_${"x".repeat(3_000)}_CURRENT_DIRECTION_TAIL`
+    );
+    const trigger = triggerSchema.parse({
+      type: "external_task",
+      source: "prompt",
+      text: "Bound the current direction document."
+    });
+    const opportunity = opportunitySchema.parse({
+      source: "explicit_task",
+      description: "Bound the current direction document."
+    });
+    const snapshot = await buildTurnSnapshot(fixture.store, trigger, trigger.text, opportunity);
+    const rendered = await renderContextBundleWithManifest(fixture.store, snapshot);
+
+    assert.match(rendered.markdown, /CURRENT_DIRECTION_HEAD_/);
+    assert.doesNotMatch(rendered.markdown, /_CURRENT_DIRECTION_TAIL/);
+    assert.match(rendered.markdown, /\n\.\.\./);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
 test("model action schema bounds completion verification refs", () => {
   const envelope = (verification_refs: string[]) => ({
     summary: "verify bounded completion evidence",
@@ -661,7 +784,8 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
     const governanceSection = rendered.manifest.sections.find((section) => section.title === "Governance Queue");
     const archiveSection = rendered.manifest.sections.find((section) => section.title === "Episode Archives");
 
-    assert.match(bundle, /Local runtime contract/);
+    assert.match(bundle, /Default current direction fixture/);
+    assert.doesNotMatch(bundle, /Local runtime contract/);
     assert.match(bundle, /Authoritative query/);
     assert.match(bundle, /Service Runtime/);
     assert.match(bundle, /service_health: attention reasons=heartbeat_stale,deployment_stale followups=status,restart/);
@@ -755,7 +879,7 @@ test("context bundle stays bounded to selected local runtime inputs", async () =
       payload: getDelegateAgentPayloadExample()
     })), true);
     assert.doesNotMatch(bundle, /LOCAL_LEARNING/);
-    assert.equal(bundle.length < 25200, true, `bundle length ${bundle.length}`);
+    assert.equal(bundle.length < 26_000, true, `bundle length ${bundle.length}`);
     assert.equal(rendered.manifest.total_chars, bundle.length);
     assert.equal(rendered.manifest.recall.memory_hit_count, 1);
     assert.equal(rendered.manifest.recall.archive_ref_count, 1);
@@ -938,7 +1062,15 @@ test("context bundle includes bounded workspace status without file bodies", asy
     await writeRepoFile(fixture.repoRoot, "docs/RUNTIME_CONTRACT.md", "Local runtime contract.");
     await writeRepoFile(fixture.repoRoot, "memory/index.md", "Resident local index.");
     await initGitFixture(fixture.repoRoot);
-    await runGit(fixture.repoRoot, ["add", "core/soul.md", "core/memory.md", "docs/RUNTIME_CONTRACT.md", "memory/index.md"]);
+    await runGit(fixture.repoRoot, [
+      "add",
+      "core/soul.md",
+      "core/memory.md",
+      "docs/CURRENT_DIRECTION.md",
+      "docs/INDEX.md",
+      "docs/RUNTIME_CONTRACT.md",
+      "memory/index.md"
+    ]);
     await runGit(fixture.repoRoot, ["commit", "-m", "initial context fixture"]);
     await writeRepoFile(fixture.repoRoot, "docs/RUNTIME_CONTRACT.md", "Updated local runtime contract.");
     await writeRepoFile(fixture.repoRoot, "local-secret.txt", "RAW_WORKSPACE_CONTEXT_BODY_SHOULD_NOT_APPEAR");
@@ -10903,6 +11035,8 @@ async function createRepoFixture(): Promise<{
   const stateRoot = join(root, "state");
   await mkdir(repoRoot, { recursive: true });
   await mkdir(stateRoot, { recursive: true });
+  await writeRepoFile(repoRoot, "docs/CURRENT_DIRECTION.md", "Default current direction fixture.");
+  await writeRepoFile(repoRoot, "docs/INDEX.md", "Default documentation router fixture.");
   const store = new AgentStore(repoRoot, stateRoot);
   await store.ensureLayout();
   return {

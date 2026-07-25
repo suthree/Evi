@@ -433,7 +433,7 @@ const SOURCE_COMPLETION_NEXT_MOVE_PATTERNS = [
   /\bmerge .*?\b(health refs?|outcome refs?|post-commit health|service health)\b/i
 ];
 const BOOTSTRAP_SOURCE_ID = "project_design_bootstrap_contract_source";
-const BOOTSTRAP_SOURCE_REF = "docs/RUNTIME_CONTRACT.md";
+const BOOTSTRAP_SOURCE_REF = "docs/CURRENT_DIRECTION.md";
 const BOOTSTRAP_SOURCE_SLICE = "fresh_state_no_verified_iteration";
 const BOOTSTRAP_PROPOSED_SLICE = "core_project_design_fresh_bootstrap";
 type ProjectDesignTargetDimensionId = "core_project_design" | "basic_runtime_substrate" | "general_agent_delegation";
@@ -637,8 +637,8 @@ export function getProjectDesignContract(): ProjectDesignContract {
     ],
     refs: [
       "CONTEXT.md",
-      "docs/RUNTIME_CONTRACT.md",
-      "docs/LOCAL_RUNTIME.md",
+      "docs/CURRENT_DIRECTION.md",
+      "docs/INDEX.md",
       "packages/core/src/project_design.ts",
       "packages/core/src/capabilities.ts",
       "packages/core/src/delegate_agent_completion_gate.ts",
@@ -978,8 +978,8 @@ function buildFreshBootstrapSource(): ProjectDesignPlanSource {
     ],
     evidence_refs: [
       "packages/core/src/project_design.ts",
-      "docs/RUNTIME_CONTRACT.md",
-      "docs/README.cn.md"
+      "docs/CURRENT_DIRECTION.md",
+      "docs/INDEX.md"
     ],
     verification_commands: verificationCommands,
     quality_verification_commands: verificationCommands,
@@ -1129,7 +1129,7 @@ function buildOutcomeEvidenceScope(target: ProjectDesignPlanTarget): ProjectDesi
       ref_prefixes: ["tests/context_harness.test.ts", "tests/delegate_agent_contract.test.ts", "tests/harness_replay.test.ts"]
     }, {
       id: "documentation",
-      ref_prefixes: ["docs/RUNTIME_CONTRACT.md", "docs/README.cn.md"]
+      ref_prefixes: ["docs/CURRENT_DIRECTION.md"]
     }, {
       id: "runtime_health",
       ref_prefixes: ["services/runtime/heartbeat.json"]
@@ -1147,7 +1147,7 @@ function buildOutcomeEvidenceScope(target: ProjectDesignPlanTarget): ProjectDesi
       ref_prefixes: ["tests/service_health.test.ts", "tests/workspace_status.test.ts", "tests/cli.test.ts"]
     }, {
       id: "documentation",
-      ref_prefixes: ["docs/RUNTIME_CONTRACT.md", "docs/README.cn.md"]
+      ref_prefixes: ["docs/CURRENT_DIRECTION.md"]
     }, {
       id: "runtime_health",
       ref_prefixes: ["services/runtime/heartbeat.json"]
@@ -1167,7 +1167,7 @@ function buildOutcomeEvidenceScope(target: ProjectDesignPlanTarget): ProjectDesi
       ref_prefixes: ["tests/project_design.test.ts", "tests/context_harness.test.ts", "tests/self_evolution_scorecard.test.ts", "tests/cli.test.ts"]
     }, {
       id: "documentation",
-      ref_prefixes: ["docs/RUNTIME_CONTRACT.md", "docs/README.cn.md"]
+      ref_prefixes: ["docs/CURRENT_DIRECTION.md"]
     }, {
       id: "runtime_health",
       ref_prefixes: ["services/runtime/heartbeat.json"]
@@ -1422,8 +1422,8 @@ function buildCapabilityStagePlan(
           "runtime attention reasons are named in the outcome instead of being treated as application progress"
         ],
         evidence_refs: [
-          "docs/RUNTIME_CONTRACT.md",
-          "packages/core/src/service_health.ts"
+          "packages/core/src/service_health.ts",
+          source.source_iteration_ref
         ]
       }
     ],

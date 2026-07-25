@@ -275,9 +275,10 @@ export async function buildTurnSnapshot(
     trigger_id: trigger.id,
     selected_opportunity_id: opportunity.id,
     stable_context: {
+      current_direction_ref: "docs/CURRENT_DIRECTION.md",
       soul_digest_ref: "core/soul.md",
       memory_policy_ref: "core/memory.md",
-      runtime_contract_ref: "docs/RUNTIME_CONTRACT.md"
+      documentation_router_ref: "docs/INDEX.md"
     },
     task_context: {
       accepted_goal: acceptedGoal,
@@ -621,8 +622,8 @@ async function buildContextSections(
     {
       title: "Stable Core",
       body: await stableCore(store),
-      refs: ["core/soul.md", "core/memory.md", "docs/INDEX.md"],
-      item_count: 3
+      refs: ["docs/CURRENT_DIRECTION.md", "core/soul.md", "core/memory.md", "docs/INDEX.md"],
+      item_count: 4
     },
     {
       title: "Resident Index",
@@ -2728,14 +2729,22 @@ function selectedSkillQualityLines(quality: Record<string, unknown> | null): str
 }
 
 async function stableCore(store: AgentStore): Promise<string> {
-  const docsIndex = await store.readRepoText("docs/INDEX.md", 1400);
+  const currentDirection = await requiredStableCoreText(store, "docs/CURRENT_DIRECTION.md", 2400);
+  const soul = await store.readRepoText("core/soul.md", 1400);
+  const memory = await store.readRepoText("core/memory.md", 1000);
+  const docsIndex = await requiredStableCoreText(store, "docs/INDEX.md", 1200);
   return [
-    refBlock("core/soul.md", await store.readRepoText("core/soul.md", 1400)),
-    refBlock("core/memory.md", await store.readRepoText("core/memory.md", 1000)),
-    !docsIndex.trim()
-      ? refBlock("docs/RUNTIME_CONTRACT.md", await store.readRepoText("docs/RUNTIME_CONTRACT.md", 1400))
-      : refBlock("docs/INDEX.md", docsIndex)
+    refBlock("docs/CURRENT_DIRECTION.md", currentDirection),
+    refBlock("core/soul.md", soul),
+    refBlock("core/memory.md", memory),
+    refBlock("docs/INDEX.md", docsIndex)
   ].join("\n\n");
+}
+
+async function requiredStableCoreText(store: AgentStore, ref: string, maxChars: number): Promise<string> {
+  const text = await store.readRepoText(ref, maxChars);
+  if (!text.trim()) throw new Error(`Missing or blank required Stable Core document: ${ref}`);
+  return text;
 }
 
 function compactTurnSnapshot(snapshot: TurnSnapshot): string {
